@@ -26,6 +26,7 @@ class FakeDynamo:
         "insightflow-event-ledger": "event_id",
         "insightflow-lead-owner": "lead_id",
         "insightflow-awaiting-owner": "lead_id",
+        "insightflow-spend-manifest": "asof_date",
     }
 
     def __init__(self):
@@ -126,10 +127,23 @@ class FakeDynamo:
 
 
 class FakeS3:
-    def __init__(self, objects=None):
+    def __init__(self, objects=None, fail_on=None):
         self.objects = objects or {}
+        self.puts = []
+        # Substring of a key that should raise on write, for failure-path tests.
+        self.fail_on = fail_on
 
     def get_object(self, Bucket, Key):
         if Key not in self.objects:
             raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
-        return {"Body": io.BytesIO(self.objects[Key].encode("utf-8"))}
+        body = self.objects[Key]
+        if isinstance(body, str):
+            body = body.encode("utf-8")
+        return {"Body": io.BytesIO(body)}
+
+    def put_object(self, Bucket, Key, Body, **kwargs):
+        if self.fail_on and self.fail_on in Key:
+            raise ClientError({"Error": {"Code": "InternalError"}}, "PutObject")
+        self.puts.append({"Bucket": Bucket, "Key": Key, "Body": Body, **kwargs})
+        self.objects[Key] = Body
+        return {"ETag": '"fake"'}
