@@ -1,0 +1,10 @@
+{
+  "_comment": "Example only. Real map lives at s3://insightflow-bronze/seeds/custom_field_map.json with the actual Close custom field IDs from the requirement doc.",
+  "_source_of_truth": "These fields are read from the CRM event payload (data.custom.cf_*), not from the lead-owner lookup file. See decision S3.",
+  "mappings": {
+    "custom.cf_REPLACE-WITH-FUNNEL-FIELD-ID": "funnel",
+    "custom.cf_REPLACE-WITH-FIELD-ID-2": "unknown_numeric_1",
+    "custom.cf_REPLACE-WITH-FIELD-ID-3": "unknown_numeric_2",
+    "custom.cf_REPLACE-WITH-FIELD-ID-4": "timezone_or_state"
+  }
+}
