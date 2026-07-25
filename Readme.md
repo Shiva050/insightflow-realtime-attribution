@@ -49,7 +49,7 @@ sql/              Athena CTAS builds for Silver and Gold
 seeds/            externalised reference maps (real values live in S3)
 infra/            console setup record — what was clicked, and why
 tools/            replay harness and test runner
-tests/            113 checks, no AWS required
+tests/            148 checks, no AWS required
 SOURCE_CONTRACTS.md   verified source behaviour, incl. where it contradicts the spec
 ```
 

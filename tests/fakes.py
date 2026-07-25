@@ -27,6 +27,7 @@ class FakeDynamo:
         "insightflow-lead-owner": "lead_id",
         "insightflow-awaiting-owner": "lead_id",
         "insightflow-spend-manifest": "asof_date",
+        "insightflow-wistia-manifest": "pull_key",
     }
 
     def __init__(self):

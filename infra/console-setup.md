@@ -425,8 +425,129 @@ new S3 writes.
 
 ---
 
+---
+
+# Chunk 4 — Wistia (scheduled API pull)
+
+No webhook registration needed; runs against real data immediately.
+
+## 20. SSM Parameter Store — the API token
+
+- [ ] Name: `/insightflow/wistia/api_token`
+- [ ] Type: **SecureString**
+- [ ] Value: the token from the requirement doc (page 6)
+
+The repo is public and the token is marked "do not share". It must never be a
+plaintext Lambda environment variable or reach a committed file. SecureString in
+Parameter Store is free and sufficient; the handler reads it once per container
+and caches it.
+
+## 21. DynamoDB — Wistia manifest
+
+- [ ] Table: `insightflow-wistia-manifest`, partition key `pull_key` (String),
+      on-demand
+
+Keys look like `events#8hunphufxp#2026-07-20`, `stats#{media}#{date}`,
+`media#{media}#{asof}`. Wistia returns explicit zero rows for quiet days, but an
+absent object is ambiguous — "no activity" or "our pull never ran". The manifest
+settles it, the same role it plays for spend.
+
+## 22. Lambda — `insightflow-wistia-ingest`
+
+Source: `lambdas/wistia_ingest/lambda_function.py`
+
+- [ ] Runtime: Python 3.12 · Handler: `lambda_function.lambda_handler`
+- [ ] Timeout: **300s** (2 media × lookback days × paginated event calls;
+      measured ~15s for a 3-day window, but the API has timed out once at 30s on
+      a full page, so leave room for retries)
+- [ ] Memory: 512 MB
+
+| Env var | Value |
+|---|---|
+| `BRONZE_BUCKET` | `insightflow-bronze` |
+| `MANIFEST_TABLE` | `insightflow-wistia-manifest` |
+| `WISTIA_MEDIA_IDS` | `8hunphufxp,9k4tbcdfg0` |
+| `WISTIA_TOKEN_PARAM` | `/insightflow/wistia/api_token` |
+| `LOOKBACK_DAYS` | `7` |
+| `PER_PAGE` | `50` (cap is 100; smaller is more reliable) |
+
+⚠️ Do **not** set `WISTIA_API_TOKEN`. It exists only as a local-development
+fallback and logs a warning when used.
+
+Role `insightflow-wistia-lambda-role`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::insightflow-bronze/wistia/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "dynamodb:PutItem",
+      "Resource": "arn:aws:dynamodb:us-east-1:{ACCOUNT_ID}:table/insightflow-wistia-manifest"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": "arn:aws:ssm:us-east-1:{ACCOUNT_ID}:parameter/insightflow/wistia/api_token"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "kms:Decrypt",
+      "Resource": "arn:aws:kms:us-east-1:{ACCOUNT_ID}:alias/aws/ssm"
+    }
+  ]
+}
+```
+
+Plus `AWSLambdaBasicExecutionRole`.
+
+## 23. EventBridge Scheduler — daily pull
+
+- [ ] Name: `insightflow-wistia-daily`
+- [ ] Schedule: `cron(0 7 * * ? *)`, timezone `America/New_York`
+- [ ] Target: `insightflow-wistia-ingest`
+
+07:00 EST, after the spend pull. No coordination between them is needed — they
+write to different prefixes.
+
+A missed run is not an outage: the next run re-requests the whole lookback
+window, and every day is independently re-requestable.
+
+## 24. Backfill
+
+Days are independent, so backfill needs no separate code path — invoke with an
+explicit window:
+
+```bash
+aws lambda invoke --function-name insightflow-wistia-ingest \
+  --payload '{"start_date":"2026-06-24","end_date":"2026-07-24"}' /dev/stdout
+```
+
+## 25. Verification
+
+Expected object layout:
+
+```
+wistia/media/asof=YYYY-MM-DD/{hashed_id}.json          2 per day
+wistia/media_stats/dt=YYYY-MM-DD/{hashed_id}.json      2 per day
+wistia/visitor_events/dt=YYYY-MM-DD/{hashed_id}.json   2 per day
+```
+
+A 3-day window verified live: 14 objects, 12 events, 0 errors.
+
+Watch the summary's `identification_rate`. It was **0.0** across every event
+sampled during contract verification — the funnel's email bridge cannot populate
+while that holds. See `SOURCE_CONTRACTS.md`, and report it as coverage rather
+than as "video drove no bookings".
+
+---
+
 ## Not yet built (later chunks)
-- Wistia API puller, pagination + watermark — chunk 4
 - Athena workgroup + Glue database + results bucket — chunk 5
 - Silver/Gold CTAS builds + Step Functions orchestration — chunks 5–6
 - Streamlit hosting (ECS Fargate or App Runner — the AWS-only constraint rules
