@@ -1,0 +1,50 @@
+# --- Requirement & design documents -----------------------------------------
+# These contain a live Wistia API token (marked DO NOT SHARE), the Calendly org
+# UUID, campaign event_type UUIDs, and an AWS account ID. This repo is PUBLIC.
+# Keep them local. Never track.
+docs/
+
+# --- Secrets & credentials ---------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials
+secrets.json
+config.local.*
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# --- Build & deploy artifacts ------------------------------------------------
+dist/
+build/
+*.zip
+.aws-sam/
+.serverless/
+lambda_package/
+
+# --- Local data --------------------------------------------------------------
+# Scratch pulls, sample payloads with real emails, Athena query results
+data/local/
+*.parquet
+athena_results/
+
+# --- OS & editors ------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
