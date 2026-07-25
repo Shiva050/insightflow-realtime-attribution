@@ -32,6 +32,13 @@ def check(name, condition, detail=""):
     print(line)
 
 
+def ndjson(body):
+    """Parse an NDJSON body back into records. Bronze is line-framed so Athena
+    can read it, so tests must read it the same way."""
+    text = body.decode("utf-8") if isinstance(body, bytes) else body
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+
 class FakeSSM:
     def __init__(self, value="tok"):
         self.value = value
@@ -152,14 +159,14 @@ def test_datasets_land_at_the_right_grain():
                    "wistia/media_stats/dt=2026-07-21/media_a.json"], f"got {keys}")
     check("both days reported written", written == ["2026-07-20", "2026-07-21"])
 
-    body = json.loads(mod.s3.puts[0]["Body"])
+    body = ndjson(mod.s3.puts[0]["Body"])[0]
     check("day object holds that day's row, values untouched",
           body["load_count"] == 100 and body["play_count"] == 5)
     check("play_rate NOT derived in Bronze (W7 - divide last)",
           "play_rate" not in body)
 
-    zero_day = json.loads(
-        [p for p in mod.s3.puts if "2026-07-21" in p["Key"]][0]["Body"])
+    zero_day = ndjson(
+        [p for p in mod.s3.puts if "2026-07-21" in p["Key"]][0]["Body"])[0]
     check("zero-activity day still lands as an explicit row",
           zero_day["load_count"] == 0)
 
@@ -181,7 +188,7 @@ def test_pagination_newest_first():
     count, identified = mod.ingest_events("media_a", day)
     check("every page collected across the window", count == 7, f"got {count}")
 
-    stored = json.loads(mod.s3.puts[-1]["Body"])
+    stored = ndjson(mod.s3.puts[-1]["Body"])
     check("no events dropped between pages",
           {e["event_key"] for e in stored} == {f"e{i}" for i in range(7)})
 
@@ -195,14 +202,16 @@ def test_pagination_newest_first():
     # The whole point of day-windowing: nothing is committed mid-window, so
     # there is no cursor to advance to a global maximum.
     check("one object per media-day, not per page", len(mod.s3.puts) == 1)
+    check("multi-record object is line-framed, one event per line",
+          mod.s3.puts[-1]["Body"].decode().count("\n") == 6)
 
     # A day with no activity must still produce evidence that we asked.
     mod2 = load_wistia()
     stub_api(mod2, events_by_day={})
     count2, _ = mod2.ingest_events("media_a", "2026-07-22")
-    check("empty day writes an empty array, not nothing",
+    check("empty day still writes an object, as evidence we asked",
           count2 == 0 and len(mod2.s3.puts) == 1
-          and json.loads(mod2.s3.puts[0]["Body"]) == [])
+          and ndjson(mod2.s3.puts[0]["Body"]) == [])
 
 
 def test_idempotency_and_recovery():
@@ -225,7 +234,7 @@ def test_idempotency_and_recovery():
     # script, no cursor to rewind.
     rows.append(event("e3", day))
     mod.ingest_events("media_a", day)
-    stored = json.loads(mod.s3.puts[-1]["Body"])
+    stored = ndjson(mod.s3.puts[-1]["Body"])
     check("re-pull absorbs late-arriving events", len(stored) == 3)
     check("still one object for the day", mod.s3.puts[-1]["Key"] == first_key)
 

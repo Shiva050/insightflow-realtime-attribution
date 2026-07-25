@@ -168,18 +168,33 @@ def record_manifest(asof_date, content_hash, size, stats):
     dynamodb.put_item(TableName=MANIFEST_TABLE, Item=item)
 
 
-def land_file(asof_date, filename, raw):
+def land_file(asof_date, filename, raw, payload):
     """
-    Write the file verbatim. Keyed on the as-of date, so a re-pull of unchanged
-    bytes is an idempotent overwrite rather than a second object.
+    Write the file as NDJSON — one spend row per line.
+
+    The source publishes a pretty-printed JSON array spanning hundreds of lines.
+    Athena's JSON SerDe reads one record per line and there is no Trino-native
+    way to read multi-line JSON, so a byte-verbatim copy would be unqueryable.
+
+    Only the FRAMING changes. Every value is preserved exactly as received, key
+    order included, and nothing is filtered, renamed or cast. The content hash
+    that drives change detection is still computed over the SOURCE bytes, so a
+    revision upstream is detected regardless of how we frame it here.
     """
     key = f"{SPEND_PREFIX}/asof={asof_date}/{filename}"
+    rows = payload if isinstance(payload, list) else [payload]
+    body = "\n".join(json.dumps(row, separators=(",", ":")) for row in rows)
+
     s3.put_object(
         Bucket=BRONZE_BUCKET,
         Key=key,
-        Body=raw,
-        ContentType="application/json",
-        Metadata={"asof-date": asof_date, "ingested-at": str(int(time.time()))},
+        Body=body.encode("utf-8"),
+        ContentType="application/x-ndjson",
+        Metadata={
+            "asof-date": asof_date,
+            "source-sha256": hashlib.sha256(raw).hexdigest(),
+            "ingested-at": str(int(time.time())),
+        },
     )
     return key
 
@@ -230,7 +245,7 @@ def lambda_handler(event, context):
         stats = summarise(payload)
 
         try:
-            key = land_file(asof_date, filename, raw)
+            key = land_file(asof_date, filename, raw, payload)
         except ClientError as exc:
             logger.exception("S3 write failed for %s", filename)
             errors.append({"file": filename, "error": str(exc)})
