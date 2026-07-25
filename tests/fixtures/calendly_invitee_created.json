@@ -1,0 +1,73 @@
+{
+  "created_at": "2025-07-09T06:04:34.000000Z",
+  "created_by": "https://api.calendly.com/users/00000000-0000-0000-0000-00000000user",
+  "event": "invitee.created",
+  "payload": {
+    "cancel_url": "https://calendly.com/cancellations/22a0f2d6-1bde-4fc1-95c1-d969df1da21d",
+    "created_at": "2025-07-09T06:04:33.761871Z",
+    "email": "test.invitee@example.com",
+    "event": "https://api.calendly.com/scheduled_events/1ac9e88e-eae3-4e4b-b979-d770cff02d72",
+    "first_name": null,
+    "invitee_scheduled_by": "https://api.calendly.com/users/00000000-0000-0000-0000-00000000user",
+    "last_name": null,
+    "name": "Test Invitee",
+    "new_invitee": null,
+    "no_show": null,
+    "old_invitee": null,
+    "payment": null,
+    "questions_and_answers": [
+      {
+        "answer": "+00 00000 00000",
+        "position": 0,
+        "question": "What is your phone number?"
+      }
+    ],
+    "reconfirmation": null,
+    "reschedule_url": "https://calendly.com/reschedulings/22a0f2d6-1bde-4fc1-95c1-d969df1da21d",
+    "rescheduled": false,
+    "routing_form_submission": null,
+    "scheduled_event": {
+      "created_at": "2025-07-09T06:04:33.743275Z",
+      "end_time": "2025-07-09T18:00:00.000000Z",
+      "event_guests": [],
+      "event_memberships": [
+        {
+          "user": "https://api.calendly.com/users/00000000-0000-0000-0000-0000000host",
+          "user_email": "test.host@example.com",
+          "user_name": "Test Host"
+        }
+      ],
+      "event_type": "https://api.calendly.com/event_types/00000000-0000-0000-0000-00000facebook",
+      "invitees_counter": {
+        "total": 1,
+        "active": 1,
+        "limit": 1
+      },
+      "location": {
+        "location": null,
+        "type": "custom"
+      },
+      "meeting_notes_html": null,
+      "meeting_notes_plain": null,
+      "name": "Test Info Session",
+      "start_time": "2025-07-09T17:45:00.000000Z",
+      "status": "active",
+      "updated_at": "2025-07-09T06:04:33.743275Z",
+      "uri": "https://api.calendly.com/scheduled_events/1ac9e88e-eae3-4e4b-b979-d770cff02d72"
+    },
+    "scheduling_method": null,
+    "status": "active",
+    "text_reminder_number": null,
+    "timezone": "Asia/Calcutta",
+    "tracking": {
+      "utm_campaign": null,
+      "utm_source": null,
+      "utm_medium": null,
+      "utm_content": null,
+      "utm_term": null,
+      "salesforce_uuid": null
+    },
+    "updated_at": "2025-07-09T06:04:33.761871Z",
+    "uri": "https://api.calendly.com/scheduled_events/1ac9e88e-eae3-4e4b-b979-d770cff02d72/invitees/22a0f2d6-1bde-4fc1-95c1-d969df1da21d"
+  }
+}
