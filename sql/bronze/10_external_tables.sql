@@ -209,3 +209,52 @@ CREATE EXTERNAL TABLE IF NOT EXISTS insightflow_bronze.seed_custom_field_map (
 ROW FORMAT DELIMITED
   FIELDS TERMINATED BY '\001'
 LOCATION 's3://insightflow-bronze/seeds/custom_field_map/';
+
+
+-- -----------------------------------------------------------------------------
+-- Lead owner state, exported from DynamoDB  (grain: lead_id)
+--
+-- Not a source feed — an export of state we own, written by the owner_export
+-- Lambda immediately before each Silver build, because Athena cannot read
+-- DynamoDB. Kept per asof= rather than overwritten so coverage has a history:
+-- a match rate sliding 85% -> 60% overnight is the signal that the sweep broke,
+-- and it is only visible against yesterday's snapshot.
+-- -----------------------------------------------------------------------------
+CREATE EXTERNAL TABLE IF NOT EXISTS insightflow_bronze.lead_owner (
+  raw string
+)
+PARTITIONED BY (asof string)
+ROW FORMAT DELIMITED
+  FIELDS TERMINATED BY '\001'
+LOCATION 's3://insightflow-bronze/crm/lead_owner/'
+TBLPROPERTIES (
+  'projection.enabled'                = 'true',
+  'projection.asof.type'              = 'date',
+  'projection.asof.format'            = 'yyyy-MM-dd',
+  'projection.asof.range'             = '2025-01-01,NOW',
+  'projection.asof.interval'          = '1',
+  'projection.asof.interval.unit'     = 'DAYS',
+  'storage.location.template'         = 's3://insightflow-bronze/crm/lead_owner/asof=${asof}'
+);
+
+
+-- -----------------------------------------------------------------------------
+-- Awaiting-owner worklist, exported from DynamoDB  (grain: lead_id)
+-- Feeds the coverage table's awaiting / exhausted counts.
+-- -----------------------------------------------------------------------------
+CREATE EXTERNAL TABLE IF NOT EXISTS insightflow_bronze.awaiting_owner (
+  raw string
+)
+PARTITIONED BY (asof string)
+ROW FORMAT DELIMITED
+  FIELDS TERMINATED BY '\001'
+LOCATION 's3://insightflow-bronze/crm/awaiting_owner/'
+TBLPROPERTIES (
+  'projection.enabled'                = 'true',
+  'projection.asof.type'              = 'date',
+  'projection.asof.format'            = 'yyyy-MM-dd',
+  'projection.asof.range'             = '2025-01-01,NOW',
+  'projection.asof.interval'          = '1',
+  'projection.asof.interval.unit'     = 'DAYS',
+  'storage.location.template'         = 's3://insightflow-bronze/crm/awaiting_owner/asof=${asof}'
+);

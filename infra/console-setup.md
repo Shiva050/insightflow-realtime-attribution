@@ -547,6 +547,124 @@ than as "video drove no bookings".
 
 ---
 
+---
+
+# Chunk 5 — Silver (Athena CTAS)
+
+## 26. S3 buckets
+
+- [ ] `insightflow-silver` — Parquet output, one prefix per table
+- [ ] `insightflow-athena-results` — query results and metadata
+
+Lifecycle rules worth setting: expire `insightflow-athena-results` after 30 days
+(pure scratch), and expire `insightflow-silver/*/build_id=*` after 30 days so
+pruned builds do not accumulate. Pruning drops the table definition only; the
+data is left in place deliberately, so a mistaken prune is recoverable.
+
+## 27. Athena workgroup
+
+- [ ] Name: `insightflow`
+- [ ] Query result location: `s3://insightflow-athena-results/`
+- [ ] Engine version: **Athena engine v3**
+
+## 28. Create the databases and Bronze tables
+
+Run once, in order, in the Athena console:
+
+```
+sql/bronze/00_create_database.sql     3 databases
+sql/bronze/10_external_tables.sql     11 external tables
+```
+
+Partitions are projected from the key layout, so there is no crawler to run and
+no `MSCK REPAIR TABLE` after a load.
+
+## 29. Publish the SQL and seeds to S3
+
+The Lambda reads its templates from S3 so it stays a single console-deployable
+file. The repo remains the source of truth:
+
+```bash
+aws s3 sync sql/ s3://insightflow-bronze/sql/ --delete
+aws s3 cp seeds/channel_map.ndjson \
+  s3://insightflow-bronze/seeds/channel_map/channel_map.ndjson
+aws s3 cp seeds/custom_field_map.ndjson \
+  s3://insightflow-bronze/seeds/custom_field_map/custom_field_map.ndjson
+```
+
+⚠️ Re-run the sync after editing any `.sql` file, or the build runs the old
+version. This is the main cost of console-first and the first thing CI should
+automate.
+
+## 30. Lambda — `insightflow-owner-export`
+
+Source: `lambdas/owner_export/lambda_function.py`
+
+- [ ] Runtime: Python 3.12 · Timeout 120s · Memory 256 MB
+- [ ] Env: `BRONZE_BUCKET`, `OWNER_CACHE_TABLE`, `AWAITING_TABLE`
+
+Role: `dynamodb:Scan` on the owner-cache and awaiting tables, `s3:PutObject` on
+`insightflow-bronze/crm/*`.
+
+Athena cannot read DynamoDB, so this lands the owner state as NDJSON before each
+build. Snapshotted per `asof=` rather than overwritten, because the coverage
+table's value is its trajectory.
+
+## 31. Lambda — `insightflow-silver-build`
+
+Source: `lambdas/silver_build/lambda_function.py`
+
+- [ ] Runtime: Python 3.12 · Timeout **900s** · Memory 512 MB
+
+| Env var | Value |
+|---|---|
+| `SQL_BUCKET` / `SQL_PREFIX` | `insightflow-bronze` / `sql/silver/` |
+| `SILVER_BUCKET` | `insightflow-silver` |
+| `ATHENA_WORKGROUP` | `insightflow` |
+| `ATHENA_OUTPUT` | `s3://insightflow-athena-results/silver/` |
+| `OWNER_EXPORT_FUNCTION` | `insightflow-owner-export` |
+| `KEEP_BUILDS` | `3` |
+
+Role needs: `athena:StartQueryExecution` / `GetQueryExecution` /
+`GetQueryResults`, `glue:*Table*` and `glue:*Database*` on the three databases,
+`s3` read on `insightflow-bronze`, read/write on `insightflow-silver` and
+`insightflow-athena-results`, and `lambda:InvokeFunction` on
+`insightflow-owner-export`.
+
+## 32. EventBridge Scheduler — daily build
+
+- [ ] Name: `insightflow-silver-daily`
+- [ ] Schedule: `cron(30 7 * * ? *)`, timezone `America/New_York`
+- [ ] Target: `insightflow-silver-build`
+
+07:30 EST, after the spend (06:30) and Wistia (07:00) pulls. The owner export is
+**not** scheduled separately — the build invokes it synchronously, so ordering
+is a guarantee rather than a gap between two crons.
+
+## 33. Verification
+
+```bash
+aws lambda invoke --function-name insightflow-silver-build /dev/stdout
+```
+
+Expect `status: SUCCEEDED`, ten tables in `built`, ten in `views_swapped`. Then
+in Athena:
+
+```sql
+SELECT * FROM insightflow_silver.dq_lead_coverage ORDER BY build_date DESC;
+
+-- The check that matters most. If these disagree, the 30-file overlap is not
+-- being collapsed and CPB is inflated.
+SELECT COUNT(*) AS rows, COUNT(DISTINCT (spend_date, channel)) AS keys
+FROM insightflow_silver.fct_spend;
+```
+
+⚠️ **The SQL has never been executed.** Athena cannot run locally, so the
+templates are validated structurally, not semantically. Expect to fix syntax on
+the first run — most likely candidates are the `AT TIME ZONE` expressions, the
+`$path` reference in `fct_media_daily_stats`, and the `UNNEST` cast in
+`fct_booking_host`.
+
 ## Not yet built (later chunks)
 - Athena workgroup + Glue database + results bucket — chunk 5
 - Silver/Gold CTAS builds + Step Functions orchestration — chunks 5–6
