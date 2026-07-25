@@ -1,0 +1,3 @@
+{"event_type":"https://api.calendly.com/event_types/REPLACE-WITH-FACEBOOK-UUID","channel":"facebook_paid_ads","is_paid":true}
+{"event_type":"https://api.calendly.com/event_types/REPLACE-WITH-YOUTUBE-UUID","channel":"youtube_paid_ads","is_paid":true}
+{"event_type":"https://api.calendly.com/event_types/REPLACE-WITH-TIKTOK-UUID","channel":"tiktok_paid_ads","is_paid":true}

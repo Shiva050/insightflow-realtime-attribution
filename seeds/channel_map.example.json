@@ -1,9 +1,0 @@
-{
-  "_comment": "Example only. Real map lives at s3://insightflow-bronze/seeds/channel_map.json with the actual event_type UUIDs from the requirement doc.",
-  "_unmapped_behaviour": "event_type absent from this map => channel 'other'. Never dropped - the subscription is org-wide and Daily Calls Booked by Source needs all sources.",
-  "mappings": {
-    "https://api.calendly.com/event_types/REPLACE-WITH-FACEBOOK-UUID": "facebook_paid_ads",
-    "https://api.calendly.com/event_types/REPLACE-WITH-YOUTUBE-UUID": "youtube_paid_ads",
-    "https://api.calendly.com/event_types/REPLACE-WITH-TIKTOK-UUID": "tiktok_paid_ads"
-  }
-}
