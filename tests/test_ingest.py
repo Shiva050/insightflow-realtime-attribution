@@ -107,8 +107,12 @@ def test_crm():
           len(fake.puts) == 2 and len(keys) == 1,
           f"{len(fake.puts)} puts across {len(keys)} distinct keys")
 
-    # --- body stored verbatim, not reserialised
-    check("body stored verbatim", fake.puts[0]["Body"] == body.encode("utf-8"))
+    # --- stored as one compact line, values intact
+    stored = fake.puts[0]["Body"].decode("utf-8")
+    check("stored as a single line (Athena's SerDe is line-oriented)",
+          "\n" not in stored)
+    check("every value preserved through reframing",
+          json.loads(stored) == json.loads(body))
 
     # --- base64 transport
     fake = FakeS3()

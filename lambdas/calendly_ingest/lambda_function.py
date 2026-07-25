@@ -256,8 +256,11 @@ def lambda_handler(event, context):
         s3.put_object(
             Bucket=BRONZE_BUCKET,
             Key=key,
-            Body=raw_body.encode("utf-8"),
-            ContentType="application/json",
+            # Single compact line (NDJSON framing) so Athena can read it — its
+            # JSON SerDe is line-oriented and Trino cannot read multi-line JSON.
+            # Framing only: values and source key order are untouched.
+            Body=json.dumps(body, separators=(",", ":")).encode("utf-8"),
+            ContentType="application/x-ndjson",
             Metadata={
                 "webhook-event": str(event_name),
                 "invitee-uri": str(payload.get("uri", ""))[:1024],

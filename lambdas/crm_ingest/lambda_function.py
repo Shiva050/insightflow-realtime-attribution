@@ -160,14 +160,17 @@ def lambda_handler(event, context):
         return _response(400, f"bad request: {exc}")
 
     # --- land --------------------------------------------------------------
-    # Store the body verbatim. Not the parsed-and-reserialised form: Bronze is
-    # the system of record, so it holds exactly the bytes Close sent us.
+    # Stored as a single compact line (NDJSON framing). Athena's JSON SerDe
+    # reads one record per line and Trino has no multi-line JSON reader, so a
+    # pretty-printed body would be unqueryable. Only the framing is normalised:
+    # every value and the source key order are preserved exactly, and the
+    # signature was verified against the original bytes before we got here.
     try:
         s3.put_object(
             Bucket=BRONZE_BUCKET,
             Key=key,
-            Body=raw_body.encode("utf-8"),
-            ContentType="application/json",
+            Body=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+            ContentType="application/x-ndjson",
             # Searchable without opening the object; also aids reconciliation.
             Metadata={
                 "event-id": str(crm_event.get("id", "")),

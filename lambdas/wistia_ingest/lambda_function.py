@@ -182,7 +182,20 @@ def fetch_all_pages(path, params):
 # Storage
 # ---------------------------------------------------------------------------
 def land(key, payload, metadata=None):
-    body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    """
+    Write as NDJSON — one record per line.
+
+    A list becomes one line per element; a single object becomes one line. This
+    is what Athena's line-oriented JSON SerDe needs, and it is why an events
+    object is a stream of records rather than a JSON array.
+
+    Keys are sorted so an unchanged re-pull produces byte-identical output even
+    if the API reorders fields, which keeps the overwrite genuinely idempotent.
+    """
+    rows = payload if isinstance(payload, list) else [payload]
+    body = "\n".join(
+        json.dumps(row, separators=(",", ":"), sort_keys=True) for row in rows
+    ).encode("utf-8")
     s3.put_object(
         Bucket=BRONZE_BUCKET,
         Key=key,
@@ -270,8 +283,8 @@ def ingest_events(media_id, day):
     wrong: the feed is newest-first, so one new event shifts every subsequent
     page and yesterday's "page 2" is not today's "page 2".
 
-    A day with no activity still writes an empty array. The object's existence
-    is the evidence that we asked — absence would be ambiguous.
+    A day with no activity still writes an object, empty. Its existence is the
+    evidence that we asked; absence would be ambiguous.
     """
     events = fetch_all_pages("stats/events.json", {
         "media_id": media_id,
