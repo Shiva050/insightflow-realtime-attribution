@@ -51,10 +51,13 @@ def main():
         else:
             failed_suites.append(name)
             print(f"  FAIL  {name:<34} {passed}/{run}")
-            # Only failing suites print detail — a green run stays quiet.
+            # Print the suite's full output. Filtering to interesting-looking
+            # lines loses the traceback body, which is the part that identifies
+            # an import-time or environment failure.
+            print(f"  {'-' * 60}")
             for line in output.splitlines():
-                if "[FAIL]" in line or "Error" in line or "Traceback" in line:
-                    print(f"        {line.strip()}")
+                print(f"  | {line}")
+            print(f"  {'-' * 60}")
 
     print(f"\n{total_passed}/{total_run} checks passed across {len(suites)} suite(s)")
 
