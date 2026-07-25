@@ -11,6 +11,20 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    env:
+      # The handlers build their boto3 clients at module import time, which is
+      # correct for Lambda — the client is created once during cold start and
+      # reused across invocations. It does mean importing a handler resolves
+      # credentials, and recent botocore raises MissingDependencyException when
+      # none are configured. These placeholders satisfy the resolver; no test
+      # reaches an AWS service, and the env provider short-circuits before any
+      # provider that would touch the network.
+      AWS_ACCESS_KEY_ID: testing
+      AWS_SECRET_ACCESS_KEY: testing
+      AWS_SESSION_TOKEN: testing
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: "true"
+
     strategy:
       fail-fast: false
       matrix:
