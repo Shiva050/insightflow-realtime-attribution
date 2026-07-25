@@ -130,12 +130,109 @@ Not yet verified against live traffic. Shape from the requirement doc's sample.
 
 ## Wistia — Stats API
 
-Not yet verified. To check **before** designing against it (this is the check
-that flipped the whole Wistia design once already):
+Verified **2026-07-24** against the live API. Base `https://api.wistia.com/v1/`.
 
-- Does `/stats/medias/{id}/by_date` exist and accept a date range?
-- Sort order of paginated results — ascending or descending? A newest-first API
-  makes a mid-run watermark advance silently lose older records.
-- `per_page` cap (documented as 100).
-- Whether the events endpoint exposes `visitor_key`, `email` and `media_id` on
-  one row.
+**Auth is `Authorization: Bearer {token}`.** Basic auth with `api:{token}` —
+the older documented scheme — returns 401.
+
+### `/stats/medias/{hashed_id}/by_date.json` — exists, and is a flow
+
+```json
+{ "date": "2026-07-24", "load_count": 565, "play_count": 5, "hours_watched": 0.209 }
+```
+
+- One row per date. `play_count` is already that day's activity, so no
+  snapshot-differencing, no `LAG`, no seed-row trap, no negative clamping. The
+  entire W3/W4 stock apparatus is unnecessary.
+- **`start_date` / `end_date` are honoured and INCLUSIVE.** A range request
+  returned exactly `2026-07-01..2026-07-10`. Missed days are therefore
+  independently re-requestable — recovery is self-healing, not prevention-only.
+- Zero-activity days are returned as rows of zeros, so the series has no gaps.
+- **`play_rate` is NOT in the payload** — only `load_count` and `play_count`.
+  Carry both to the target grain and divide once (W7).
+
+The cumulative endpoint `/stats/medias/{id}.json` does exist and does expose
+`play_rate`, `visitors` and `engagement` — but it is a **stock**, lifetime to
+date. We design against `by_date`.
+
+Why W7 matters here, from real numbers over `2026-06-24..2026-07-24`:
+
+| media | loads | plays | play_rate |
+|---|---|---|---|
+| `8hunphufxp` | 6455 | 48 | **0.74%** |
+| `9k4tbcdfg0` | 44 | 18 | **40.91%** |
+
+Averaging the two rates gives ~21%. The correct volume-weighted figure is
+66/6499 = **1.02%**. A 20× error, from exactly the non-additive-ratio mistake
+W7 describes.
+
+### `/stats/events.json` — the visitor bridge
+
+Row carries `event_key`, `visitor_key`, `media_id`, `received_at`,
+`percent_viewed`, `email`, `ip`, `country`/`region`/`city`, `org`,
+`user_agent_details`, `conversion_type`.
+
+So one row holds both the visitor↔media link and the email the funnel joins on.
+
+- **`media_id`, `start_date`, `end_date` filters all work**, and date bounds are
+  inclusive. The feed can be pulled as bounded day-windows.
+- Unfiltered, the endpoint returns **org-wide** events across all media in the
+  account, not just the two in scope.
+
+### ⚠️ Pagination is NEWEST-FIRST (descending)
+
+Verified directly: page 1 ran `05:24:19 → 03:06:59`, page 2 continued
+`02:01:39 → 01:13:36`. Pages are disjoint.
+
+**This is the W5 hazard, confirmed rather than hypothesised.** Advancing a
+watermark to the newest record seen mid-run would set it to the global maximum,
+and every unfetched older record becomes permanently invisible — no error, no
+gap, just silently absent data. The watermark must be a commit marker advanced
+only after every page lands.
+
+Better still, and what we do: because the endpoint accepts inclusive date
+bounds, ingest **day-windowed** rather than cursor-driven. Each day is
+independently re-requestable, there is no cursor state to corrupt, and sort
+order stops mattering inside a bounded window.
+
+### `per_page` cap is 100
+
+Requesting 200 or 500 both return 100. A `per_page=100` request also **timed out
+once** at 30s during verification, so the client needs a retry and should prefer
+smaller pages.
+
+### `/stats/visitors.json`
+
+Keys: `visitor_key`, `created_at`, `last_active_at`, `load_count`, `play_count`,
+`visitor_identity`, `identifying_event_key`, `last_event_key`,
+`user_agent_details`.
+
+`visitor_identity` is nested: `{"name": "", "email": null, "org": {...}}`.
+
+Note this row mixes stable identity with counts that move on every watch —
+which is precisely why S17 splits it into `dim_visitor` plus a separate fact.
+
+### ⚠️ The identification rate is approximately ZERO
+
+Of 100 sampled events, **0 carried an email**. Of 25 sampled visitors, **0** had
+`visitor_identity.email` populated.
+
+S22 anticipated that anonymous viewing is normal and should be reported rather
+than cleaned away. In this account it is not merely common, it is total.
+
+Consequences for the cross-source funnel:
+
+- The email bridge `fct_visitor_event → dim_lead` is structurally correct but
+  currently joins **nothing**. The key exists; it is empty.
+- F2's "video-touch rate is a floor, not an exact rate" still holds — but the
+  floor here is 0, and a floor of zero carries no information.
+- This must be reported as a coverage figure alongside the funnel, never as a
+  finding that video drives no bookings. Those are entirely different claims,
+  and conflating them would be the confident-wrong-number failure S7 describes.
+- Media-quality metrics (plays, loads, play_rate per video per day) are
+  unaffected and fully computable.
+
+**To re-check before the 7-day run:** whether any Wistia embed captures email
+(a Turnstile form or a post-roll email gate). If none does, the funnel's video
+leg cannot populate, and that should be stated in the SME presentation as a
+source limitation rather than discovered in the dashboard.
