@@ -356,9 +356,76 @@ Then invoke `insightflow-owner-sweep` manually: the synthetic lead's
 
 ---
 
-## Not yet built (later chunks)
+---
 
-- Calendly spend batch puller, self-healing via `file_index.json` — chunk 3
+# Chunk 3 — Calendly spend (scheduled pull)
+
+No webhook registration needed. This one runs against real data immediately.
+
+## 16. DynamoDB — spend manifest
+
+- [ ] Table: `insightflow-spend-manifest`, partition key `asof_date` (String),
+      on-demand
+
+Records what we have landed and the content hash we computed for it. Two jobs:
+it drives the self-healing diff, and it is the arbiter for S14 — a spend date
+absent from Silver is only *genuine zero* if the manifest confirms we landed a
+file covering it. Otherwise it is missing data and the metric is suppressed.
+
+**No TTL.** Expiring manifest rows would make old dates look like ingestion
+failures forever after.
+
+## 17. Lambda — `insightflow-spend-ingest`
+
+Source: `lambdas/spend_ingest/lambda_function.py`
+
+- [ ] Runtime: Python 3.12 · Handler: `lambda_function.lambda_handler`
+- [ ] Timeout: **120s** (30 sequential HTTPS GETs; measured well under this)
+- [ ] Memory: 256 MB
+
+| Env var | Value |
+|---|---|
+| `BRONZE_BUCKET` | `insightflow-bronze` |
+| `SPEND_PREFIX` | `calendly/spend` |
+| `MANIFEST_TABLE` | `insightflow-spend-manifest` |
+| `SOURCE_BASE_URL` | `https://dea-data-bucket.s3.us-east-1.amazonaws.com/calendly_spend_data` |
+| `VERIFY_ALL` | `true` — re-hash every advertised file each run. 30 small GETs a day, and the only way to notice an in-place correction. |
+
+Role `insightflow-spend-lambda-role`: `s3:PutObject` on
+`arn:aws:s3:::insightflow-bronze/calendly/spend/*`, plus `dynamodb:Scan` and
+`PutItem` on the manifest table, plus `AWSLambdaBasicExecutionRole`.
+
+No permission is needed for `dea-data-bucket` — it is read unauthenticated.
+
+## 18. EventBridge Scheduler — daily pull
+
+- [ ] Name: `insightflow-spend-daily`
+- [ ] Schedule: `cron(30 6 * * ? *)`, **timezone `America/New_York`**
+- [ ] Target: `insightflow-spend-ingest`
+
+06:30 EST, a 30-minute buffer after the source's ~06:00 publication. Set the
+timezone explicitly — a UTC cron would drift by an hour across DST and start
+firing before the file exists.
+
+Missing a run is not an outage: each file carries a 30-day trailing window, so
+the next run recovers everything. See `SOURCE_CONTRACTS.md`.
+
+## 19. Verification
+
+```bash
+# Manual invoke, then check the summary in CloudWatch.
+aws lambda invoke --function-name insightflow-spend-ingest /dev/stdout
+
+aws s3 ls s3://insightflow-bronze/calendly/spend/ --recursive | wc -l   # expect 30
+```
+
+Expected on a first run: `landed` lists 30 dates, `errors` empty,
+`still_missing` empty. On a second run: `landed` empty, `unchanged` 30, and no
+new S3 writes.
+
+---
+
+## Not yet built (later chunks)
 - Wistia API puller, pagination + watermark — chunk 4
 - Athena workgroup + Glue database + results bucket — chunk 5
 - Silver/Gold CTAS builds + Step Functions orchestration — chunks 5–6
