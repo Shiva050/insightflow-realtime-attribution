@@ -60,8 +60,8 @@ identity AS (
     MAX_BY(browser,  TRY(from_iso8601_timestamp(received_at_raw)))               AS browser,
     MAX_BY(platform, TRY(from_iso8601_timestamp(received_at_raw)))               AS platform,
     MAX_BY(is_mobile_raw, TRY(from_iso8601_timestamp(received_at_raw)))          AS is_mobile_raw,
-    MIN(TRY(from_iso8601_timestamp(received_at_raw)))                            AS first_seen_at,
-    MAX(TRY(from_iso8601_timestamp(received_at_raw)))                            AS last_seen_at
+    CAST(MIN(TRY(from_iso8601_timestamp(received_at_raw))) AS TIMESTAMP)         AS first_seen_at,
+    CAST(MAX(TRY(from_iso8601_timestamp(received_at_raw))) AS TIMESTAMP)         AS last_seen_at
   FROM events
   GROUP BY visitor_key
 )

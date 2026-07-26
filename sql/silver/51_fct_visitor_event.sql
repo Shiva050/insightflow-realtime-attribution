@@ -69,9 +69,8 @@ SELECT
   LOWER(TRIM(email))                               AS email_normalized,
   (email IS NOT NULL AND TRIM(email) <> '')        AS is_identified,
 
-  TRY(from_iso8601_timestamp(received_at_raw))     AS received_at_utc,
-  CAST(TRY(from_iso8601_timestamp(received_at_raw))
-       AT TIME ZONE 'America/New_York' AS DATE)    AS event_date_est,
+  CAST(TRY(from_iso8601_timestamp(received_at_raw)) AS TIMESTAMP)     AS received_at_utc,
+  CAST(at_timezone(TRY(from_iso8601_timestamp(received_at_raw)), 'America/New_York') AS DATE)    AS event_date_est,
 
   percent_viewed,
   -- A load with no meaningful watch is not engagement. Kept as a flag rather

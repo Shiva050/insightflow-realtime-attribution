@@ -62,11 +62,9 @@ SELECT
 
   COALESCE(cm.channel, 'other')                     AS channel,
 
-  TRY(from_iso8601_timestamp(b.start_time_raw))     AS start_time_utc,
-  CAST(TRY(from_iso8601_timestamp(b.start_time_raw))
-       AT TIME ZONE 'America/New_York' AS DATE)     AS meeting_date_est,
-  CAST(TRY(from_iso8601_timestamp(b.created_at_raw))
-       AT TIME ZONE 'America/New_York' AS DATE)     AS booking_date_est,
+  CAST(TRY(from_iso8601_timestamp(b.start_time_raw)) AS TIMESTAMP)     AS start_time_utc,
+  CAST(at_timezone(TRY(from_iso8601_timestamp(b.start_time_raw)), 'America/New_York') AS DATE)     AS meeting_date_est,
+  CAST(at_timezone(TRY(from_iso8601_timestamp(b.created_at_raw)), 'America/New_York') AS DATE)     AS booking_date_est,
 
   DATE '{{asof}}'                                   AS build_date
 
