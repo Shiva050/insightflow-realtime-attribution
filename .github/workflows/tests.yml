@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: [main, dev]
   workflow_dispatch:
+  # Lets the deploy workflow gate on a green test run rather than duplicating it.
+  workflow_call:
 
 jobs:
   test:

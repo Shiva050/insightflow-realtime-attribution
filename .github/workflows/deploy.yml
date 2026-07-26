@@ -1,0 +1,158 @@
+name: deploy
+
+# Publishes the Lambdas, the SQL templates and the seeds.
+#
+# Guarded on the AWS_DEPLOY_ROLE_ARN repository variable: with it unset the jobs
+# skip cleanly, so a fork or a clone never attempts to deploy into an account it
+# has no business touching.
+#
+# Authentication is OIDC role assumption — no long-lived access keys in secrets.
+# A leaked key on a public repo is an account compromise; a role trusted only
+# for this repo's OIDC subject is not.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "lambdas/**"
+      - "sql/**"
+      - "seeds/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+    inputs:
+      what:
+        description: What to deploy
+        required: true
+        default: all
+        type: choice
+        options: [all, lambdas, sql]
+
+permissions:
+  id-token: write     # required for OIDC
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  BRONZE_BUCKET: insightflow-bronze
+
+jobs:
+  # Tests gate the deploy. Deploying a red build to the account running a
+  # 7-day evaluation is exactly the failure a pipeline exists to prevent.
+  test:
+    uses: ./.github/workflows/tests.yml
+
+  sql:
+    needs: test
+    if: >-
+      vars.AWS_DEPLOY_ROLE_ARN != '' &&
+      (github.event_name == 'push' || inputs.what == 'all' || inputs.what == 'sql')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Publish SQL templates
+        # The build Lambda reads its templates from S3 at runtime, so an edit
+        # that is committed but not synced silently runs the previous version.
+        # This is the step that removes that trap.
+        run: aws s3 sync sql/ "s3://${BRONZE_BUCKET}/sql/" --delete --exact-timestamps
+
+      - name: Publish seeds
+        # Only the real seeds, never the .example.ndjson placeholders — pushing
+        # a placeholder would blank the channel map and silently retag every
+        # booking as 'other'.
+        run: |
+          set -e
+          for name in channel_map custom_field_map; do
+            if [ -f "seeds/${name}.ndjson" ]; then
+              aws s3 cp "seeds/${name}.ndjson" \
+                "s3://${BRONZE_BUCKET}/seeds/${name}/${name}.ndjson"
+              echo "published ${name}"
+            else
+              echo "::notice::seeds/${name}.ndjson not in the repo (expected - "
+              echo "it holds real IDs and this repo is public). Upload it manually."
+            fi
+          done
+
+  lambdas:
+    needs: test
+    if: >-
+      vars.AWS_DEPLOY_ROLE_ARN != '' &&
+      (github.event_name == 'push' || inputs.what == 'all' || inputs.what == 'lambdas')
+    runs-on: ubuntu-latest
+
+    strategy:
+      # One failure must not block the others: a partly-updated set is
+      # recoverable, an aborted run leaves you guessing what shipped.
+      fail-fast: false
+      matrix:
+        include:
+          - dir: crm_ingest
+            fn: insightflow-crm-ingest
+          - dir: calendly_ingest
+            fn: insightflow-calendly-ingest
+          - dir: crm_enrich
+            fn: insightflow-crm-enrich
+          - dir: owner_sweep
+            fn: insightflow-owner-sweep
+          - dir: spend_ingest
+            fn: insightflow-spend-ingest
+          - dir: wistia_ingest
+            fn: insightflow-wistia-ingest
+          - dir: owner_export
+            fn: insightflow-owner-export
+          - dir: warehouse_build
+            fn: insightflow-warehouse-build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Package ${{ matrix.dir }}
+        # Every handler is a single file with no dependency beyond boto3, which
+        # the runtime already provides. No layers, no vendoring, no build step.
+        run: |
+          cd "lambdas/${{ matrix.dir }}"
+          zip -q -r "${GITHUB_WORKSPACE}/${{ matrix.dir }}.zip" lambda_function.py
+
+      - name: Deploy ${{ matrix.fn }}
+        run: |
+          set -e
+          if ! aws lambda get-function --function-name "${{ matrix.fn }}" >/dev/null 2>&1; then
+            echo "::warning::${{ matrix.fn }} does not exist yet - create it via "
+            echo "infra/console-setup.md first. Skipping."
+            exit 0
+          fi
+          aws lambda update-function-code \
+            --function-name "${{ matrix.fn }}" \
+            --zip-file "fileb://${{ matrix.dir }}.zip" \
+            --publish \
+            --no-cli-pager
+          aws lambda wait function-updated \
+            --function-name "${{ matrix.fn }}"
+          echo "deployed ${{ matrix.fn }}"
+
+  report:
+    needs: [sql, lambdas]
+    if: always() && vars.AWS_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarise
+        run: |
+          echo "### Deploy result" >> "$GITHUB_STEP_SUMMARY"
+          echo "- SQL: ${{ needs.sql.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Lambdas: ${{ needs.lambdas.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Code only. Infrastructure (queues, tables, schedules, IAM) is" >> "$GITHUB_STEP_SUMMARY"
+          echo "console-managed and recorded in \`infra/console-setup.md\`." >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ needs.sql.result }}" = "failure" ] || [ "${{ needs.lambdas.result }}" = "failure" ]; then
+            exit 1
+          fi
