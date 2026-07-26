@@ -1,5 +1,5 @@
 """
-Silver build orchestrator.
+Warehouse build orchestrator — Silver, then Gold.
 
 Renders the CTAS templates, runs them through Athena, and atomically repoints
 the public views at the new build.
@@ -69,11 +69,20 @@ lambda_client = boto3.client("lambda")
 OWNER_EXPORT_FUNCTION = os.environ.get("OWNER_EXPORT_FUNCTION", "insightflow-owner-export")
 
 SQL_BUCKET = os.environ.get("SQL_BUCKET", "insightflow-bronze")
-SQL_PREFIX = os.environ.get("SQL_PREFIX", "sql/silver/")
 
 SILVER_BUCKET = os.environ.get("SILVER_BUCKET", "insightflow-silver")
 SILVER_DB = os.environ.get("SILVER_DB", "insightflow_silver")
-BRONZE_DB = os.environ.get("BRONZE_DB", "insightflow_bronze")
+GOLD_BUCKET = os.environ.get("GOLD_BUCKET", "insightflow-gold")
+GOLD_DB = os.environ.get("GOLD_DB", "insightflow_gold")
+
+# Both layers build in ONE invocation, in this order. Gold reads the Silver
+# views, so splitting them across two schedules would reintroduce exactly the
+# cadence-versus-need race the owner export avoids: too close and Gold reads a
+# half-swapped Silver, too far apart and it reads yesterday's.
+LAYERS = [
+    {"name": "silver", "prefix": "sql/silver/", "db": SILVER_DB},
+    {"name": "gold",   "prefix": "sql/gold/",   "db": GOLD_DB},
+]
 
 ATHENA_WORKGROUP = os.environ.get("ATHENA_WORKGROUP", "insightflow")
 ATHENA_OUTPUT = os.environ.get(
@@ -131,17 +140,17 @@ def run_query(sql, description):
 # ---------------------------------------------------------------------------
 # Templating
 # ---------------------------------------------------------------------------
-def load_sql_files():
-    """Read the CTAS templates from S3, ordered by filename."""
+def load_sql_files(prefix):
+    """Read one layer's CTAS templates from S3, ordered by filename."""
     paginator = s3.get_paginator("list_objects_v2")
     keys = []
-    for page in paginator.paginate(Bucket=SQL_BUCKET, Prefix=SQL_PREFIX):
+    for page in paginator.paginate(Bucket=SQL_BUCKET, Prefix=prefix):
         for obj in page.get("Contents", []):
             if obj["Key"].endswith(".sql"):
                 keys.append(obj["Key"])
 
     if not keys:
-        raise RuntimeError(f"No .sql files under s3://{SQL_BUCKET}/{SQL_PREFIX}")
+        raise RuntimeError(f"No .sql files under s3://{SQL_BUCKET}/{prefix}")
 
     files = []
     for key in sorted(keys):
@@ -207,19 +216,19 @@ def strip_comments(sql):
 # ---------------------------------------------------------------------------
 # Build lifecycle
 # ---------------------------------------------------------------------------
-def swap_view(table, build_id):
+def swap_view(table, build_id, database):
     """
     Repoint the public view at the new build. Atomic metadata operation, so
     consumers never see a missing or half-built table.
     """
     sql = (
-        f"CREATE OR REPLACE VIEW {SILVER_DB}.{table} AS "
-        f"SELECT * FROM {SILVER_DB}.{table}__{build_id}"
+        f"CREATE OR REPLACE VIEW {database}.{table} AS "
+        f"SELECT * FROM {database}.{table}__{build_id}"
     )
     run_query(sql, f"swap view {table}")
 
 
-def prune_old_builds(table, keep):
+def prune_old_builds(table, keep, database):
     """
     Drop versioned tables beyond the retention window.
 
@@ -231,7 +240,7 @@ def prune_old_builds(table, keep):
     try:
         paginator = glue.get_paginator("get_tables")
         names = []
-        for page in paginator.paginate(DatabaseName=SILVER_DB,
+        for page in paginator.paginate(DatabaseName=database,
                                        Expression=f"{table}__*"):
             names.extend(t["Name"] for t in page.get("TableList", []))
     except ClientError:
@@ -241,7 +250,7 @@ def prune_old_builds(table, keep):
     # Build IDs are timestamps, so lexical order is chronological.
     for name in sorted(names, reverse=True)[keep:]:
         try:
-            run_query(f"DROP TABLE IF EXISTS {SILVER_DB}.{name}", f"prune {name}")
+            run_query(f"DROP TABLE IF EXISTS {database}.{name}", f"prune {name}")
             dropped.append(name)
         except Exception:
             logger.warning("Could not drop %s", name, exc_info=True)
@@ -281,50 +290,65 @@ def lambda_handler(event, context):
     build_id = event.get("build_id") or now.strftime("%Y%m%dt%H%M%S")
     asof = event.get("asof") or str(now.date())
 
-    logger.info("Silver build %s (asof=%s) starting", build_id, asof)
+    logger.info("Warehouse build %s (asof=%s) starting", build_id, asof)
 
     owner_export = None
     if not event.get("skip_owner_export"):
         owner_export = refresh_owner_export(asof)
 
     funnel_field_id = resolve_funnel_field_id()
-    files = load_sql_files()
 
-    built, failed = [], []
+    built, failed, swapped, prune_summary = {}, [], {}, {}
 
-    # Sequential and filename-ordered. dq_lead_coverage reads dim_lead's
-    # versioned table, so 10_ must complete before 11_ runs. The numeric prefix
-    # IS the dependency declaration.
-    for table, filename, template in files:
-        sql = strip_comments(render(
-            template,
-            build_id=build_id,
-            asof=asof,
-            silver_bucket=SILVER_BUCKET,
-            funnel_field_id=funnel_field_id,
-        ))
-        try:
-            run_query(sql, f"build {table}__{build_id}")
-            built.append(table)
-        except Exception as exc:
-            logger.exception("Build failed for %s", table)
-            failed.append({"table": table, "file": filename, "error": str(exc)})
+    for layer in LAYERS:
+        name, prefix, database = layer["name"], layer["prefix"], layer["db"]
+        built[name], swapped[name] = [], []
 
-    # Views are swapped only if EVERY table built. A partial swap would leave
-    # consumers joining today's bookings to yesterday's spend, which is worse
-    # than a stale-but-consistent set of views.
-    swapped, prune_summary = [], {}
+        files = load_sql_files(prefix)
+        logger.info("Layer %s: %d table(s) to build", name, len(files))
+
+        # Sequential and filename-ordered. The numeric prefix IS the dependency
+        # declaration: dq_lead_coverage reads dim_lead's versioned table, and
+        # channel_attribution reads cpb_by_channel's.
+        for table, filename, template in files:
+            sql = strip_comments(render(
+                template,
+                build_id=build_id,
+                asof=asof,
+                silver_bucket=SILVER_BUCKET,
+                gold_bucket=GOLD_BUCKET,
+                funnel_field_id=funnel_field_id,
+            ))
+            try:
+                run_query(sql, f"build {database}.{table}__{build_id}")
+                built[name].append(table)
+            except Exception as exc:
+                logger.exception("Build failed for %s.%s", database, table)
+                failed.append({"layer": name, "table": table,
+                               "file": filename, "error": str(exc)})
+
+        if failed:
+            # Stop at the layer boundary. Building Gold on top of a broken
+            # Silver would produce marts that look fine and are wrong.
+            logger.error("Layer %s incomplete - not proceeding to later layers", name)
+            break
+
+        # Swap this layer's views before the next layer builds, since the next
+        # layer reads them.
+        for table in built[name]:
+            swap_view(table, build_id, database)
+            swapped[name].append(table)
+
     if failed:
-        logger.error("Build incomplete - %d table(s) failed, views NOT swapped. "
-                     "Consumers continue reading the previous build.", len(failed))
+        logger.error("Build incomplete - %d table(s) failed, affected views NOT "
+                     "swapped. Consumers continue reading the previous build.",
+                     len(failed))
     else:
-        for table in built:
-            swap_view(table, build_id)
-            swapped.append(table)
-        for table in built:
-            dropped = prune_old_builds(table, KEEP_BUILDS)
-            if dropped:
-                prune_summary[table] = dropped
+        for layer in LAYERS:
+            for table in built[layer["name"]]:
+                dropped = prune_old_builds(table, KEEP_BUILDS, layer["db"])
+                if dropped:
+                    prune_summary[table] = dropped
 
     summary = {
         "build_id": build_id,
@@ -336,14 +360,14 @@ def lambda_handler(event, context):
         "pruned": prune_summary,
         "status": "SUCCEEDED" if not failed else "FAILED",
     }
-    logger.info("Silver build complete: %s", json.dumps(summary))
+    logger.info("Warehouse build complete: %s", json.dumps(summary))
 
     if failed:
         # Raise so the scheduler records a failure and alarms can fire. Returning
         # a summary with status FAILED would look like a successful invocation.
         raise RuntimeError(
-            f"Silver build {build_id} failed for: "
-            f"{', '.join(f['table'] for f in failed)}"
+            f"Warehouse build {build_id} failed for: "
+            + ", ".join(f"{f['layer']}.{f['table']}" for f in failed)
         )
 
     return summary
