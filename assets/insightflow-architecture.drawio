@@ -1,0 +1,261 @@
+<mxfile host="app.diagrams.net" modified="2026-07-26T00:00:00.000Z" agent="InsightFlow" version="24.0.0" type="device">
+  <diagram id="insightflow-arch" name="InsightFlow Architecture">
+    <mxGraphModel dx="1600" dy="1000" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1900" pageHeight="1150" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ============ TITLE ============ -->
+        <mxCell id="title" value="InsightFlow — real-time attribution across CRM, scheduling and video" style="text;html=1;align=left;verticalAlign=middle;fontSize=20;fontStyle=1;fontColor=#232F3E;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="900" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="AWS · us-east-1 · account 995679261492 — Bronze / Silver / Gold medallion, no dbt, no Snowflake" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontColor=#5A6C7D;" vertex="1" parent="1">
+          <mxGeometry x="40" y="48" width="900" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- ============ AWS CLOUD BOUNDARY ============ -->
+        <mxCell id="cloud" value="AWS Cloud — us-east-1" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=13;fontStyle=0;container=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_aws_cloud_alt;strokeColor=#232F3E;fillColor=none;verticalAlign=top;align=left;spacingLeft=32;fontColor=#232F3E;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="240" y="90" width="1560" height="1010" as="geometry" />
+        </mxCell>
+
+        <!-- ============ BAND LABELS ============ -->
+        <mxCell id="bandA" value="① CRM REAL-TIME PATH" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#BC1356;" vertex="1" parent="1">
+          <mxGeometry x="270" y="130" width="300" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="bandB" value="② SCHEDULED PULLS  (no webhook registration needed)" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#BC1356;" vertex="1" parent="1">
+          <mxGeometry x="270" y="500" width="420" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="bandC" value="③ WAREHOUSE — full rebuild, build-and-swap" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#5A30B5;" vertex="1" parent="1">
+          <mxGeometry x="270" y="740" width="420" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- ============ EXTERNAL SOURCES ============ -->
+        <mxCell id="close" value="Close CRM&#xa;webhook" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#879196;fontColor=#232F3E;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="180" width="130" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="cal" value="Calendly&#xa;webhook" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#879196;fontColor=#232F3E;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="260" width="130" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="pending" value="⚠ registration pending&#xa;with SMEs" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#C7131F;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="50" y="315" width="150" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="spendsrc" value="dea-data-bucket&#xa;(public) spend files" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#60A337;gradientDirection=north;fillColor=#277116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="90" y="560" width="70" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="wistiasrc" value="Wistia&#xa;Stats API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#879196;fontColor=#232F3E;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="680" width="130" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="slack" value="Slack&#xa;incoming webhook" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#879196;fontColor=#232F3E;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1630" y="185" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ============ BAND A — INGEST ============ -->
+        <mxCell id="apigw" value="API Gateway&#xa;/crm  ·  /calendly" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#FF4F8B;gradientDirection=north;fillColor=#BC1356;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.api_gateway;" vertex="1" parent="1">
+          <mxGeometry x="300" y="200" width="70" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="crmingest" value="crm-ingest&#xa;λ" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" vertex="1" parent="1">
+          <mxGeometry x="440" y="170" width="70" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="calingest" value="calendly-ingest&#xa;λ" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" vertex="1" parent="1">
+          <mxGeometry x="440" y="290" width="70" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ============ BRONZE ============ -->
+        <mxCell id="bronze" value="insightflow-bronze&#xa;raw NDJSON · natural-key filenames" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#60A337;gradientDirection=north;fillColor=#277116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;fontStyle=1;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="620" y="380" width="90" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="bronzenote" value="BRONZE — immutable, replayable" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontStyle=1;fontColor=#277116;" vertex="1" parent="1">
+          <mxGeometry x="580" y="350" width="180" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- ============ BAND A — DELAY + ENRICH ============ -->
+        <mxCell id="sqsdelay" value="SQS delay queue&#xa;10 min · claim-check" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#FF4F8B;gradientDirection=north;fillColor=#BC1356;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.sqs;" vertex="1" parent="1">
+          <mxGeometry x="850" y="185" width="70" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="enrich" value="crm-enrich&#xa;λ" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="185" width="70" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="dlq" value="DLQ&#xa;maxReceive 5" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#FF4F8B;gradientDirection=north;fillColor=#BC1356;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.sqs;" vertex="1" parent="1">
+          <mxGeometry x="850" y="310" width="70" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ddb" value="DynamoDB&#xa;ledger · owner cache · worklist" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#4D72F3;gradientDirection=north;fillColor=#3334B9;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.dynamodb;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="185" width="70" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ownerlookup" value="dea-lead-owner&#xa;(public) read-through" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#60A337;gradientDirection=north;fillColor=#277116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="310" width="70" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="sweepsched" value="EventBridge&#xa;hourly" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#FF4F8B;gradientDirection=north;fillColor=#BC1356;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.eventbridge;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="310" width="70" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="sweep" value="owner-sweep λ&#xa;promote · give up at 24" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="310" width="70" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ============ BAND B — SCHEDULED PULLS ============ -->
+        <mxCell id="schedb" value="EventBridge Scheduler&#xa;06:30 / 07:00 EST" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#FF4F8B;gradientDirection=north;fillColor=#BC1356;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.eventbridge;" vertex="1" parent="1">
+          <mxGeometry x="300" y="560" width="70" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="spendl" value="spend-ingest λ&#xa;manifest diff + hash" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" vertex="1" parent="1">
+          <mxGeometry x="450" y="540" width="70" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="wistial" value="wistia-ingest λ&#xa;day-windowed, no cursor" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" vertex="1" parent="1">
+          <mxGeometry x="450" y="660" width="70" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ssm" value="SSM Parameter Store&#xa;SecureString token" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F54749;gradientDirection=north;fillColor=#C7131F;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.systems_manager;" vertex="1" parent="1">
+          <mxGeometry x="300" y="690" width="70" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="manifests" value="DynamoDB manifests&#xa;spend · wistia" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#4D72F3;gradientDirection=north;fillColor=#3334B9;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.dynamodb;" vertex="1" parent="1">
+          <mxGeometry x="620" y="600" width="70" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ============ BAND C — WAREHOUSE ============ -->
+        <mxCell id="schedc" value="EventBridge&#xa;07:30 EST" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#FF4F8B;gradientDirection=north;fillColor=#BC1356;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.eventbridge;" vertex="1" parent="1">
+          <mxGeometry x="300" y="820" width="70" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ownerexp" value="owner-export λ&#xa;DynamoDB → S3 NDJSON" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" vertex="1" parent="1">
+          <mxGeometry x="450" y="940" width="70" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="whbuild" value="warehouse-build λ&#xa;renders CTAS, swaps views" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" vertex="1" parent="1">
+          <mxGeometry x="450" y="820" width="70" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="athena" value="Athena&#xa;engine v3 · CTAS" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#945DF2;gradientDirection=north;fillColor=#5A30B5;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;fontStyle=1;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.athena;" vertex="1" parent="1">
+          <mxGeometry x="680" y="815" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="glue" value="Glue Data Catalog&#xa;3 databases · projection" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#945DF2;gradientDirection=north;fillColor=#5A30B5;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.glue;" vertex="1" parent="1">
+          <mxGeometry x="685" y="960" width="70" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="silver" value="insightflow-silver&#xa;10 tables · Parquet" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#60A337;gradientDirection=north;fillColor=#277116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;fontStyle=1;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="930" y="790" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="gold" value="insightflow-gold&#xa;8 metric marts · Parquet" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#60A337;gradientDirection=north;fillColor=#277116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;fontStyle=1;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="930" y="940" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="silvernote" value="SILVER — conformed, deduplicated" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontStyle=1;fontColor=#277116;" vertex="1" parent="1">
+          <mxGeometry x="880" y="762" width="190" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="goldnote" value="GOLD — one mart per metric" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontStyle=1;fontColor=#277116;" vertex="1" parent="1">
+          <mxGeometry x="880" y="912" width="190" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="streamlit" value="Streamlit dashboard&#xa;(local; ECS Fargate if hosted)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#879196;fontColor=#232F3E;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="855" width="170" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ============ EDGES — BAND A ============ -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="close" target="apigw">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="cal" target="apigw">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="apigw" target="crmingest">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="apigw" target="calingest">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="crm_event_{event_id}.json" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="crmingest" target="bronze">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="calendly_event_{invitee}.json" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="calingest" target="bronze">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="S3 event notification&#xa;(prefix crm/events/)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" edge="1" parent="1" source="bronze" target="sqsdelay">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" value="pointer only" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="sqsdelay" target="enrich">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="atomic claim" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="enrich" target="ddb">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" value="alert" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="ddb" target="slack">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" value="poison → DLQ" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#C7131F;strokeWidth=2;endArrow=blockThin;endFill=1;dashed=1;fontSize=9;fontColor=#C7131F;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="sqsdelay" target="dlq">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="sweepsched" target="sweep">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" value="re-read owner" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="sweep" target="ownerlookup">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" value="read-through cache&#xa;(never negative-cache)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;dashed=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="ownerlookup" target="ddb">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============ EDGES — BAND B ============ -->
+        <mxCell id="e20" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="schedb" target="spendl">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e21" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="schedb" target="wistial">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e22" value="file_index.json diff" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="spendsrc" target="spendl">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e23" value="by_date + events" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="wistiasrc" target="wistial">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e24" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="spendl" target="bronze">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e25" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="wistial" target="bronze">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e26" value="token" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;dashed=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="ssm" target="wistial">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e27" value="what we landed" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;dashed=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="spendl" target="manifests">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============ EDGES — BAND C ============ -->
+        <mxCell id="e30" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="schedc" target="whbuild">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e31" value="invoked first" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="whbuild" target="ownerexp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e32" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="whbuild" target="athena">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e33" value="reads Bronze" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="bronze" target="athena">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e34" value="CTAS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="athena" target="silver">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e35" value="CTAS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="athena" target="gold">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e36" value="schema + location" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;dashed=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="glue" target="athena">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e37" value="queries Gold" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="gold" target="streamlit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e38" value="owner state → S3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#232F3E;strokeWidth=2;endArrow=blockThin;endFill=1;dashed=1;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="ownerexp" target="bronze">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============ LEGEND / DESIGN NOTES ============ -->
+        <mxCell id="legend" value="Design notes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#879196;fontColor=#232F3E;fontSize=11;fontStyle=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="180" width="380" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="legendtext" value="• 10-min delay lets Close assign a lead owner before we read it.&#xa;&#xa;• Queue carries a POINTER, not the payload — S3 is the system of record.&#xa;&#xa;• Idempotency is an atomic conditional PutItem, not read-then-write, which would be a TOCTOU race.&#xa;&#xa;• Alert sends BEFORE the ledger records it: a duplicate page beats a missed lead.&#xa;&#xa;• A missing owner is never negative-cached — it goes on a durable worklist that the hourly sweep drains, giving up after 24 tries.&#xa;&#xa;• Bronze object keys are a pure function of the payload, so a webhook retry overwrites itself instead of duplicating.&#xa;&#xa;• Silver/Gold rebuild fully each run; views swap only if every table built." style="text;html=1;align=left;verticalAlign=top;fontSize=10;fontColor=#232F3E;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="1412" y="205" width="358" height="300" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
