@@ -23,9 +23,29 @@ app is runnable before the warehouse has ever built.
 
 ## Hosting
 
-Streamlit Community Cloud is **not** an option — the spec restricts the stack to
-AWS/Azure. Deploy to ECS Fargate or App Runner behind the container in
-`streamlit/Dockerfile`.
+Not currently hosted — the dashboard runs locally, which covers the deliverable
+(reports/dashboards plus a demo recording). `Dockerfile` documents the
+production path rather than being part of the build; nothing in CI builds it.
+
+If it ever needs a URL:
+
+```
+Dockerfile  --docker build-->  image  --docker push-->  ECR  --pull & run-->  ECS Fargate  --> ALB --> https URL
+```
+
+**ECS Fargate behind an ALB**, not App Runner or Lambda. Streamlit holds a
+persistent WebSocket to push reruns: Lambda cannot do that at all, and App
+Runner's WebSocket support must be verified before committing to it — an ALB
+supports them natively. EKS would be Kubernetes overhead for one stateless
+container.
+
+The app would authenticate through the **ECS task role**, so no credentials ever
+enter the image.
+
+Two things to settle first: an ALB URL is unauthenticated by default and this
+dashboard shows spend, CPB and per-employee workload, so it needs Cognito on the
+listener or a VPC-internal placement; and the ALB costs about $16/month whether
+anyone visits or not.
 
 ## Chart conventions
 
