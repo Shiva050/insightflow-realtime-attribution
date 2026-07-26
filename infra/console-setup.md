@@ -11,6 +11,22 @@ transfer and latency).
 
 Status legend: `[ ]` not created · `[x]` created and verified
 
+> **Deployed 2026-07-26** into account `995679261492`, us-east-1. Everything
+> below exists and has been exercised against live data. Built by CLI rather
+> than clicked, so the commands are the record; this file remains the
+> description of intent and reasoning.
+>
+> **Live webhook endpoints:**
+> ```
+> POST https://wx13s08t9k.execute-api.us-east-1.amazonaws.com/deploy/crm
+> POST https://wx13s08t9k.execute-api.us-east-1.amazonaws.com/deploy/calendly
+> ```
+>
+> Still outstanding: `SLACK_WEBHOOK_URL` is unset on `insightflow-crm-enrich`
+> and `insightflow-owner-sweep`, so alerts are logged to CloudWatch rather than
+> posted. The signing keys are also unset, so webhook signatures are accepted
+> unverified — set both before the seven-day evaluation window starts.
+
 ---
 
 ## 1. S3 — Bronze bucket
@@ -143,7 +159,7 @@ POST https://{api-id}.execute-api.us-east-1.amazonaws.com/deploy/crm
 POST https://{api-id}.execute-api.us-east-1.amazonaws.com/deploy/calendly
 ```
 
-- [ ] Record the real `{api-id}` here once deployed: `__________`
+- [x] Real api-id: **`wx13s08t9k`**
 
 ---
 
