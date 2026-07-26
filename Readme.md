@@ -14,6 +14,14 @@ still pending — see [Deployment status](#deployment-status).
 
 ## Architecture
 
+![InsightFlow architecture](assets/insightflow-architecture.png)
+
+<!-- Editable source: assets/insightflow-architecture.drawio — open at
+     app.diagrams.net, then File → Export as → PNG and save alongside it. -->
+
+<details>
+<summary>Text version of the same flow</summary>
+
 ```
                      ┌─ Close CRM ──────────┐  webhook
                      ├─ Calendly bookings ──┤  webhook
@@ -30,6 +38,8 @@ still pending — see [Deployment status](#deployment-status).
                                 │
    SERVE       Streamlit → Athena
 ```
+
+</details>
 
 No dbt, no Snowflake, AWS only — all spec constraints.
 
@@ -179,6 +189,7 @@ sql/gold/         8 metric marts
 streamlit/        dashboard over Athena (Gold marts only)
 seeds/            externalised reference maps (real values live in S3)
 infra/            deployment record — every resource, and why
+assets/           architecture diagram (draw.io source + exported PNG)
 tools/            replay harness, test runner
 tests/            258 checks, no AWS required
 SOURCE_CONTRACTS.md   verified source behaviour, incl. where it contradicts the spec
