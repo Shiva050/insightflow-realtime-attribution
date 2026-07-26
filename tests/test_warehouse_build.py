@@ -1,8 +1,8 @@
 """
-Local tests for the Silver build orchestrator, plus a static check of the CTAS
-templates themselves.
+Local tests for the warehouse build orchestrator, plus static checks of the
+CTAS templates for both layers.
 
-    python3 tests/test_silver_build.py
+    python3 tests/test_warehouse_build.py
 
 Athena cannot be run locally, so the SQL is validated structurally: correct
 target table, required placeholders present, no stray ones, and the invariants
@@ -18,7 +18,8 @@ import re
 import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SQL_DIR = os.path.join(REPO_ROOT, "sql", "silver")
+SILVER_DIR = os.path.join(REPO_ROOT, "sql", "silver")
+GOLD_DIR = os.path.join(REPO_ROOT, "sql", "gold")
 
 RESULTS = []
 
@@ -121,20 +122,21 @@ SEED = '{"field_id":"custom.cf_FUNNELID","field_name":"funnel"}\n'
 def real_sql_objects():
     """The actual templates from disk, as they would appear in S3."""
     objects = {"seeds/custom_field_map/custom_field_map.ndjson": SEED}
-    for filename in sorted(os.listdir(SQL_DIR)):
-        if filename.endswith(".sql"):
-            with open(os.path.join(SQL_DIR, filename)) as fh:
-                objects[f"sql/silver/{filename}"] = fh.read()
+    for layer, directory in (("silver", SILVER_DIR), ("gold", GOLD_DIR)):
+        for filename in sorted(os.listdir(directory)):
+            if filename.endswith(".sql"):
+                with open(os.path.join(directory, filename)) as fh:
+                    objects[f"sql/{layer}/{filename}"] = fh.read()
     return objects
 
 
 def load_builder(objects=None, fail_on=None, glue_tables=None):
     spec = importlib.util.spec_from_file_location(
-        "silver_build",
-        os.path.join(REPO_ROOT, "lambdas", "silver_build", "lambda_function.py"),
+        "warehouse_build",
+        os.path.join(REPO_ROOT, "lambdas", "warehouse_build", "lambda_function.py"),
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["silver_build"] = mod
+    sys.modules["warehouse_build"] = mod
     spec.loader.exec_module(mod)
 
     mod.s3 = FakeS3Objects(objects if objects is not None else real_sql_objects())
@@ -187,7 +189,7 @@ def test_templating():
 def test_file_discovery():
     print("\nSilver build - SQL discovery")
     mod = load_builder()
-    files = mod.load_sql_files()
+    files = mod.load_sql_files("sql/silver/")
     tables = [t for t, _, _ in files]
 
     check("all ten Silver tables discovered", len(files) == 10, f"found {tables}")
@@ -199,9 +201,14 @@ def test_file_discovery():
                           "fct_media_daily_stats", "dim_visitor", "fct_visitor_event"},
           f"got {sorted(tables)}")
 
+    gold = [t for t, _, _ in mod.load_sql_files("sql/gold/")]
+    check("all eight Gold marts discovered", len(gold) == 8, f"found {gold}")
+    check("cpb built before channel_attribution reads it",
+          gold.index("cpb_by_channel") < gold.index("channel_attribution"))
+
     mod2 = load_builder(objects={"seeds/custom_field_map/custom_field_map.ndjson": SEED})
     try:
-        mod2.load_sql_files()
+        mod2.load_sql_files("sql/silver/")
         raised = False
     except RuntimeError:
         raised = True
@@ -216,14 +223,26 @@ def test_successful_build():
     mod = load_builder()
     summary = mod.lambda_handler({"build_id": "20260725t060000", "asof": "2026-07-25"}, None)
 
-    check("all tables built", len(summary["built"]) == 10)
-    check("all views swapped", len(summary["views_swapped"]) == 10)
+    check("all Silver tables built", len(summary["built"]["silver"]) == 10)
+    check("all Gold marts built", len(summary["built"]["gold"]) == 8)
+    check("all views swapped",
+          len(summary["views_swapped"]["silver"]) == 10
+          and len(summary["views_swapped"]["gold"]) == 8)
     check("status reported as succeeded", summary["status"] == "SUCCEEDED")
 
     ctas = [q for q in mod.athena.queries if q.startswith("CREATE TABLE")]
     views = [q for q in mod.athena.queries if q.startswith("CREATE OR REPLACE VIEW")]
-    check("one CTAS per table", len(ctas) == 10)
-    check("one view swap per table", len(views) == 10)
+    check("one CTAS per table across both layers", len(ctas) == 18)
+    check("one view swap per table", len(views) == 18)
+
+    # Gold reads the Silver views, so every Silver swap must precede the first
+    # Gold CTAS.
+    last_silver_swap = max(i for i, q in enumerate(mod.athena.queries)
+                           if q.startswith("CREATE OR REPLACE VIEW insightflow_silver"))
+    first_gold_ctas = min(i for i, q in enumerate(mod.athena.queries)
+                          if q.startswith("CREATE TABLE insightflow_gold"))
+    check("Silver views swapped before Gold builds against them",
+          last_silver_swap < first_gold_ctas)
 
     check("CTAS writes to a build-scoped location",
           all("build_id=20260725t060000" in q for q in ctas))
@@ -232,10 +251,12 @@ def test_successful_build():
 
     # Every build must be swapped only after all builds complete, so no view
     # swap may appear before the final CTAS.
-    last_ctas = max(i for i, q in enumerate(mod.athena.queries) if q.startswith("CREATE TABLE"))
-    first_view = min(i for i, q in enumerate(mod.athena.queries)
-                     if q.startswith("CREATE OR REPLACE VIEW"))
-    check("no view swapped until every table has built", first_view > last_ctas)
+    last_silver_ctas = max(i for i, q in enumerate(mod.athena.queries)
+                           if q.startswith("CREATE TABLE insightflow_silver"))
+    first_silver_view = min(i for i, q in enumerate(mod.athena.queries)
+                            if q.startswith("CREATE OR REPLACE VIEW insightflow_silver"))
+    check("no view swapped until its whole layer has built",
+          first_silver_view > last_silver_ctas)
 
     check("funnel field id templated into dim_lead",
           any("custom.cf_FUNNELID" in q for q in ctas))
@@ -295,8 +316,11 @@ def test_failed_build_leaves_views_alone():
     check("NO views swapped when any table failed", views == [],
           f"{len(views)} views were swapped despite a failure")
 
-    check("other tables still attempted",
+    check("other tables in the layer still attempted",
           len([q for q in mod.athena.queries if q.startswith("CREATE TABLE")]) == 10)
+    check("Gold never built on top of a broken Silver",
+          not any(q.startswith("CREATE TABLE insightflow_gold") for q in mod.athena.queries),
+          "marts over a broken Silver would look fine and be wrong")
 
 
 def test_pruning():
@@ -305,7 +329,7 @@ def test_pruning():
     mod = load_builder(glue_tables={"insightflow_silver": old})
     mod.KEEP_BUILDS = 3
 
-    dropped = mod.prune_old_builds("dim_lead", 3)
+    dropped = mod.prune_old_builds("dim_lead", 3, "insightflow_silver")
     check("prunes beyond the retention window", len(dropped) == 4, f"dropped {dropped}")
     check("keeps the newest builds",
           all(d < "dim_lead__20260725t000000" for d in dropped), f"{dropped}")
@@ -318,11 +342,11 @@ def test_pruning():
 # ---------------------------------------------------------------------------
 def test_sql_templates():
     print("\nSilver SQL - static checks")
-    files = {f: open(os.path.join(SQL_DIR, f)).read()
-             for f in sorted(os.listdir(SQL_DIR)) if f.endswith(".sql")}
+    files = {f: open(os.path.join(SILVER_DIR, f)).read()
+             for f in sorted(os.listdir(SILVER_DIR)) if f.endswith(".sql")}
 
     bad_target, missing_build, bad_placeholder, no_asof = [], [], [], []
-    allowed = {"build_id", "asof", "silver_bucket", "funnel_field_id"}
+    allowed = {"build_id", "asof", "silver_bucket", "gold_bucket", "funnel_field_id"}
 
     for filename, body in files.items():
         table = re.match(r"^\d+_([a-z0-9_]+)\.sql$", filename).group(1)
@@ -387,6 +411,135 @@ def test_sql_templates():
           "an empty bridge must be visible in the data, not inferred from no rows")
 
 
+def test_gold_templates():
+    print("\nGold SQL - static checks")
+    files = {f: open(os.path.join(GOLD_DIR, f)).read()
+             for f in sorted(os.listdir(GOLD_DIR)) if f.endswith(".sql")}
+    allowed = {"build_id", "asof", "silver_bucket", "gold_bucket", "funnel_field_id"}
+
+    bad_target, bad_location, bad_placeholder = [], [], []
+    for filename, body in files.items():
+        table = re.match(r"^\d+_([a-z0-9_]+)\.sql$", filename).group(1)
+        if f"CREATE TABLE insightflow_gold.{table}__{{{{build_id}}}}" not in body:
+            bad_target.append(filename)
+        if f"{{{{gold_bucket}}}}/{table}/build_id={{{{build_id}}}}" not in body:
+            bad_location.append(filename)
+        for ph in set(re.findall(r"\{\{(\w+)\}\}", body)):
+            if ph not in allowed:
+                bad_placeholder.append((filename, ph))
+
+    check("every Gold mart targets the table named by its filename",
+          not bad_target, f"{bad_target}")
+    check("every Gold mart writes to a build-scoped location in the gold bucket",
+          not bad_location, f"{bad_location}")
+    check("no unknown placeholders in Gold", not bad_placeholder, f"{bad_placeholder}")
+
+    # --- CPB: the three traps -------------------------------------------------
+    cpb = files["10_cpb_by_channel.sql"]
+    check("CPB collapses bookings to the spend grain BEFORE joining",
+          "bookings_agg" in cpb and "GROUP BY booking_date_est, channel" in cpb,
+          "joining fact-to-fact at mismatched grains fans spend out across every "
+          "booking row and inflates it silently")
+    check("CPB uses a FULL OUTER JOIN so neither side is dropped",
+          "FULL OUTER JOIN" in cpb,
+          "an inner join hides spend-with-no-bookings and bookings-with-no-spend, "
+          "which are exactly the days worth looking at")
+    check("CPB is undefined, never zero, when bookings are zero",
+          "WHEN j.bookings = 0                            THEN NULL" in cpb
+          or "j.bookings = 0" in cpb and "THEN NULL" in cpb,
+          "rendering a divide-by-zero as 0 reads as 'free'")
+    check("CPB distinguishes genuine zero spend from a broken pull",
+          "is_genuine_zero_spend" in cpb and "is_spend_data_missing" in cpb,
+          "reporting a failed ingestion as organic makes a channel look "
+          "infinitely efficient because the pipeline broke")
+    check("CPB carries its components alongside the ratio",
+          "j.spend," in cpb and "j.bookings," in cpb)
+    check("CPB offers a rolling figure for attribution lag",
+          "cpb_7d_rolling" in cpb)
+
+    # --- Funnel: identity is not causality ------------------------------------
+    funnel = files["40_video_booking_funnel.sql"]
+    check("funnel enforces a temporal guard, not just identity",
+          "v.received_at_utc <  bk.created_at_utc" in funnel,
+          "a shared key is not a cause; without this, watches AFTER the booking "
+          "would credit video for it")
+    check("funnel bounds the attribution window",
+          "INTERVAL '30' DAY" in funnel,
+          "a watch 18 months before a booking probably did not drive it")
+    check("funnel collapses the video side before joining",
+          "SELECT DISTINCT" in funnel,
+          "one booker with 40 sessions would otherwise inflate bookings 40x")
+    check("funnel is built backward from bookings",
+          "bookings_agg" in funnel and "bookings_with_prior_video" in funnel,
+          "the video top is polluted by anonymity, so only the booking side has "
+          "a fully-known denominator")
+    check("funnel reports its touch rate as a floor",
+          "video_touch_rate_floor" in funnel)
+    check("funnel carries the identification rate that explains a zero",
+          "video_identification_rate" in funnel and "NOT MEASURABLE" in funnel,
+          "'cannot measure' and 'measured zero' are different claims")
+    check("funnel keeps people and sessions separate",
+          "bookings_with_prior_video" in funnel and "prior_video_sessions" in funnel)
+
+    # --- Ratios stay non-additive --------------------------------------------
+    media = files["32_media_engagement.sql"]
+    check("media play_rate divides summed components, never averages rates",
+          "SUM(play_count) OVER" in media and "AVG(" not in media.split("SELECT")[-1],
+          "averaging daily rates gave 21% against a true 1.02% on live data")
+    check("media mart records that per-channel play_rate is not computable",
+          "NOT COMPUTABLE" in media.upper())
+
+    attribution = files["21_channel_attribution.sql"]
+    check("channel leaderboard re-aggregates from components, not from daily CPB",
+          "SUM(bookings)" in attribution and "SUM(CASE WHEN NOT is_spend_data_missing" in attribution,
+          "averaging daily CPB weights a 1-booking day like a 40-booking day")
+    check("channel leaderboard excludes broken-spend days from the total",
+          "NOT is_spend_data_missing" in attribution)
+    check("channel leaderboard carries its spend coverage rate",
+          "spend_coverage_rate" in attribution)
+
+    # --- Denominators match their numerators ----------------------------------
+    load = files["31_meeting_load_by_employee.sql"]
+    check("meeting load divides by tenure weeks, not the reporting window",
+          "total_meetings / tenure_weeks_proxy" in load,
+          "dividing everyone by the window punishes anyone not present throughout")
+    check("meeting load uses tenure weeks, not active weeks",
+          "tenure_weeks_proxy" in load and "avg_per_active_week" in load,
+          "active-weeks structurally cannot reveal underload - idle weeks drop "
+          "out of the denominator")
+    check("meeting load labels its proxied denominator in the data",
+          "tenure_is_proxied" in load and "tenure_caveat" in load,
+          "a wrong-but-available number dressed as the right one is worse than "
+          "an honest approximation")
+    check("meeting load counts per host off the bridge",
+          "fct_booking_host" in load,
+          "a co-hosted meeting is a unit of load on each host")
+
+    # --- One name, two metrics ------------------------------------------------
+    slots = files["30_booking_time_slots.sql"]
+    check("time slots serve both customer-local and business-EST perspectives",
+          "customer_local" in slots and "business_est" in slots,
+          "one timezone silently serves one consumer and misleads the other")
+    # Strip comments: the header explains WHY created_at is not used, so a
+    # whole-file grep would match the explanation and fail.
+    slots_body = "\n".join(ln for ln in slots.splitlines()
+                           if not ln.strip().startswith("--"))
+    check("time slots use start_time, not created_at",
+          "start_hour_invitee_local" in slots_body and "created_at" not in slots_body,
+          "created_at is the acquisition signal and already drives CPB")
+    check("time slots exclude, rather than default, rows with no invitee timezone",
+          "NOT missing_invitee_timezone" in slots)
+
+    trend = files["20_bookings_trend.sql"]
+    check("trend emits a dense date spine so gaps are not drawn as flat lines",
+          "date_spine" in trend and "sequence(" in trend)
+
+    daily = files["00_daily_calls_by_source.sql"]
+    check("daily calls counts all sources, not just paid",
+          "WHERE" not in daily.split("FROM insightflow_silver.fct_booking")[1],
+          "Silver tags, Gold selects - this metric wants every source")
+
+
 if __name__ == "__main__":
     test_templating()
     test_file_discovery()
@@ -395,6 +548,7 @@ if __name__ == "__main__":
     test_failed_build_leaves_views_alone()
     test_pruning()
     test_sql_templates()
+    test_gold_templates()
 
     failed = [r for r in RESULTS if not r[1]]
     print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} passed")

@@ -554,6 +554,7 @@ than as "video drove no bookings".
 ## 26. S3 buckets
 
 - [ ] `insightflow-silver` — Parquet output, one prefix per table
+- [ ] `insightflow-gold` — Parquet metric marts
 - [ ] `insightflow-athena-results` — query results and metadata
 
 Lifecycle rules worth setting: expire `insightflow-athena-results` after 30 days
@@ -610,16 +611,16 @@ Athena cannot read DynamoDB, so this lands the owner state as NDJSON before each
 build. Snapshotted per `asof=` rather than overwritten, because the coverage
 table's value is its trajectory.
 
-## 31. Lambda — `insightflow-silver-build`
+## 31. Lambda — `insightflow-warehouse-build`
 
-Source: `lambdas/silver_build/lambda_function.py`
+Source: `lambdas/warehouse_build/lambda_function.py`
 
 - [ ] Runtime: Python 3.12 · Timeout **900s** · Memory 512 MB
 
 | Env var | Value |
 |---|---|
-| `SQL_BUCKET` / `SQL_PREFIX` | `insightflow-bronze` / `sql/silver/` |
-| `SILVER_BUCKET` | `insightflow-silver` |
+| `SQL_BUCKET` | `insightflow-bronze` |
+| `SILVER_BUCKET` / `GOLD_BUCKET` | `insightflow-silver` / `insightflow-gold` |
 | `ATHENA_WORKGROUP` | `insightflow` |
 | `ATHENA_OUTPUT` | `s3://insightflow-athena-results/silver/` |
 | `OWNER_EXPORT_FUNCTION` | `insightflow-owner-export` |
@@ -633,9 +634,9 @@ Role needs: `athena:StartQueryExecution` / `GetQueryExecution` /
 
 ## 32. EventBridge Scheduler — daily build
 
-- [ ] Name: `insightflow-silver-daily`
+- [ ] Name: `insightflow-warehouse-daily`
 - [ ] Schedule: `cron(30 7 * * ? *)`, timezone `America/New_York`
-- [ ] Target: `insightflow-silver-build`
+- [ ] Target: `insightflow-warehouse-build`
 
 07:30 EST, after the spend (06:30) and Wistia (07:00) pulls. The owner export is
 **not** scheduled separately — the build invokes it synchronously, so ordering
@@ -644,11 +645,11 @@ is a guarantee rather than a gap between two crons.
 ## 33. Verification
 
 ```bash
-aws lambda invoke --function-name insightflow-silver-build /dev/stdout
+aws lambda invoke --function-name insightflow-warehouse-build /dev/stdout
 ```
 
-Expect `status: SUCCEEDED`, ten tables in `built`, ten in `views_swapped`. Then
-in Athena:
+Expect `status: SUCCEEDED`, ten Silver tables and eight Gold marts in `built`,
+the same in `views_swapped`. Then in Athena:
 
 ```sql
 SELECT * FROM insightflow_silver.dq_lead_coverage ORDER BY build_date DESC;
@@ -664,6 +665,43 @@ templates are validated structurally, not semantically. Expect to fix syntax on
 the first run — most likely candidates are the `AT TIME ZONE` expressions, the
 `$path` reference in `fct_media_daily_stats`, and the `UNNEST` cast in
 `fct_booking_host`.
+
+## 34. Gold marts
+
+Built by the same Lambda in the same invocation, after Silver's views are
+swapped — Gold reads those views, so splitting the layers across two schedules
+would reintroduce a timing race.
+
+| Mart | Grain | Spec metric |
+|---|---|---|
+| `daily_calls_by_source` | booking_date + channel | 1.1 |
+| `cpb_by_channel` | metric_date + channel | 1.2 |
+| `bookings_trend` | booking_date + channel | 1.3 |
+| `channel_attribution` | channel | 1.4 |
+| `booking_time_slots` | hour + dow + channel + perspective | 1.5 |
+| `meeting_load_by_employee` | host | 1.6 |
+| `media_engagement` | hashed_id + stat_date | Wistia |
+| `video_booking_funnel` | channel + booking_date | cross-source |
+
+Checks worth running once it builds:
+
+```sql
+-- Spend must not have fanned out. If total_spend is ~30x a hand-check of one
+-- day's file, the Silver dedup is not working.
+SELECT channel, total_spend, total_bookings, cpb, spend_coverage_rate
+FROM insightflow_gold.channel_attribution ORDER BY rank_by_efficiency;
+
+-- Expect video_touch_rate_floor = 0 WITH video_identification_rate = 0.
+-- That pairing means "not measurable", not "video drove nothing".
+SELECT channel, bookings, bookings_with_prior_video,
+       video_touch_rate_floor, video_identification_rate, interpretation
+FROM insightflow_gold.video_booking_funnel ORDER BY booking_date DESC LIMIT 10;
+
+-- Per-employee load will NOT sum to total meetings. Correct: a co-hosted
+-- meeting is one meeting and two units of load.
+SELECT SUM(total_meetings) FROM insightflow_gold.meeting_load_by_employee;
+SELECT COUNT(*) FROM insightflow_silver.fct_booking;
+```
 
 ## Not yet built (later chunks)
 - Athena workgroup + Glue database + results bucket — chunk 5
