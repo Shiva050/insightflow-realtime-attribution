@@ -45,11 +45,12 @@ duplicate page beats a missed lead.
 
 ```
 lambdas/          one self-contained handler per directory (console-deployable)
-sql/              Athena CTAS builds for Silver and Gold
+sql/              Athena DDL and CTAS builds for Silver and Gold
+streamlit/        dashboard over Athena (Gold marts only)
 seeds/            externalised reference maps (real values live in S3)
 infra/            console setup record — what was clicked, and why
 tools/            replay harness and test runner
-tests/            148 checks, no AWS required
+tests/            257 checks, no AWS required
 SOURCE_CONTRACTS.md   verified source behaviour, incl. where it contradicts the spec
 ```
 
@@ -78,6 +79,26 @@ python3 tools/replay.py --dry-run
 python3 tools/replay.py --url https://{api-id}.execute-api.us-east-1.amazonaws.com/deploy/crm
 python3 tools/replay.py --url ... --repeat 5 --concurrent    # idempotency
 ```
+
+## Dashboard
+
+```bash
+pip install -r streamlit/requirements.txt
+streamlit run streamlit/app.py
+```
+
+Reads Gold marts only — no metric logic in the view, so a number on screen always
+traces back to a CTAS. Runs before the warehouse exists: every panel degrades to
+an explanation of what is missing.
+
+Three display rules exist to stop it lying: CPB is omitted rather than zeroed
+when bookings are zero, days with missing spend are excluded and flagged rather
+than counted as zero, and the funnel reports "not measurable" rather than a 0%
+touch rate when no video session carries an email.
+
+The chart palette is validated for colour-vision deficiency in both light and
+dark modes. Two light-mode hues fall below 3:1 contrast, so every chart carries a
+legend and a table view — identity is never colour alone.
 
 ## Deployment
 
