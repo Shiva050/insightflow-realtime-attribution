@@ -116,7 +116,18 @@ with tab_overview:
         # Divided once, from summed components — never an average of per-channel
         # CPB, which would weight a 1-booking channel like a 40-booking one.
         blended_cpb = total_spend / total_bookings if total_bookings else None
-        coverage = attribution["spend_coverage_rate"].astype(float).min()
+
+        # Coverage over channels where spend is EXPECTED. Organic bookings land
+        # under 'other', which has no spend by definition — including it would
+        # drag the headline toward zero and report a data-quality failure that
+        # has not happened. Weighted by days observed so a channel with one day
+        # of history does not swing the figure.
+        paid = attribution[attribution["total_spend"].notna()]
+        if not paid.empty and paid["days_observed"].sum():
+            covered_days = (paid["days_observed"] - paid["days_spend_missing"]).sum()
+            coverage = covered_days / paid["days_observed"].sum()
+        else:
+            coverage = float("nan")
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Booked calls", f"{total_bookings:,}")
