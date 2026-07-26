@@ -394,9 +394,16 @@ def test_sql_templates():
     booking = files["20_fct_booking.sql"]
     check("fct_booking attributes on created_at, not start_time",
           "booking_date_est" in booking and "invitee_created_at_raw" in booking)
+    # at_timezone() rather than the AT TIME ZONE operator: Athena rejects the
+    # operator inside a function call and with a column argument, which the
+    # per-invitee timezone is.
     check("fct_booking normalises to EST before truncating to a date",
-          "AT TIME ZONE 'America/New_York' AS DATE" in booking,
+          "CAST(at_timezone(" in booking and "'America/New_York') AS DATE)" in booking,
           "otherwise midnight-boundary bookings land on the wrong day")
+    check("no stored timestamp keeps its time zone",
+          "AS TIMESTAMP)" in booking,
+          "from_iso8601_timestamp returns TIMESTAMP WITH TIME ZONE, which "
+          "Parquet cannot store — this failed on the first real Athena run")
     check("fct_booking keeps unmapped channels as 'other', never dropping them",
           "COALESCE(cm.channel, 'other')" in booking)
 
