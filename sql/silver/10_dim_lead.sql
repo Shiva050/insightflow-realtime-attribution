@@ -84,8 +84,8 @@ SELECT
   -- remembering. The raw value stays so a rule change can be recomputed.
   LOWER(TRIM(o.lead_email))                         AS lead_email_normalized,
 
-  TRY(from_iso8601_timestamp(e.lead_created_at_raw))  AS lead_created_at,
-  TRY(from_iso8601_timestamp(e.lead_updated_at_raw))  AS lead_updated_at,
+  CAST(TRY(from_iso8601_timestamp(e.lead_created_at_raw)) AS TIMESTAMP)  AS lead_created_at,
+  CAST(TRY(from_iso8601_timestamp(e.lead_updated_at_raw)) AS TIMESTAMP)  AS lead_updated_at,
 
   -- Coverage is a column on the dimension, not a report someone remembers to
   -- run. A silent join drop is a correctness bug that looks like a number.

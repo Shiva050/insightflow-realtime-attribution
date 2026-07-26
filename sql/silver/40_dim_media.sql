@@ -45,8 +45,8 @@ SELECT
   duration_seconds,
   ROUND(duration_seconds / 60.0, 2)                AS duration_minutes,
   description,
-  TRY(from_iso8601_timestamp(created_at_raw))      AS media_created_at,
-  TRY(from_iso8601_timestamp(updated_at_raw))      AS media_updated_at,
+  CAST(TRY(from_iso8601_timestamp(created_at_raw)) AS TIMESTAMP)      AS media_created_at,
+  CAST(TRY(from_iso8601_timestamp(updated_at_raw)) AS TIMESTAMP)      AS media_updated_at,
   asof_date                                        AS sourced_from_asof,
   DATE '{{asof}}'                                  AS build_date
 FROM snapshots

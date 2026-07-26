@@ -106,29 +106,24 @@ SELECT
   -- spent on day X bought, so spend and booking-creation are the cause-effect
   -- pair. start_time is when the call happens, which would smear today's spend
   -- across future meeting dates.
-  TRY(from_iso8601_timestamp(m.invitee_created_at_raw))                AS created_at_utc,
+  CAST(TRY(from_iso8601_timestamp(m.invitee_created_at_raw)) AS TIMESTAMP)                AS created_at_utc,
   -- Normalised to EST BEFORE truncating to a date, or midnight-boundary
   -- bookings land on the wrong day and quietly misattribute spend.
-  CAST(TRY(from_iso8601_timestamp(m.invitee_created_at_raw))
-       AT TIME ZONE 'America/New_York' AS DATE)                        AS booking_date_est,
+  CAST(at_timezone(TRY(from_iso8601_timestamp(m.invitee_created_at_raw)), 'America/New_York') AS DATE)                        AS booking_date_est,
 
-  TRY(from_iso8601_timestamp(m.start_time_raw))                        AS start_time_utc,
-  TRY(from_iso8601_timestamp(m.end_time_raw))                          AS end_time_utc,
+  CAST(TRY(from_iso8601_timestamp(m.start_time_raw)) AS TIMESTAMP)                        AS start_time_utc,
+  CAST(TRY(from_iso8601_timestamp(m.end_time_raw)) AS TIMESTAMP)                          AS end_time_utc,
 
   -- Two hour grains for two different questions (see header).
   m.invitee_timezone,
   CASE WHEN m.invitee_timezone IS NOT NULL
-       THEN HOUR(TRY(from_iso8601_timestamp(m.start_time_raw))
-                 AT TIME ZONE m.invitee_timezone)
+       THEN HOUR(at_timezone(TRY(from_iso8601_timestamp(m.start_time_raw)), m.invitee_timezone))
   END                                               AS start_hour_invitee_local,
   CASE WHEN m.invitee_timezone IS NOT NULL
-       THEN DAY_OF_WEEK(TRY(from_iso8601_timestamp(m.start_time_raw))
-                        AT TIME ZONE m.invitee_timezone)
+       THEN DAY_OF_WEEK(at_timezone(TRY(from_iso8601_timestamp(m.start_time_raw)), m.invitee_timezone))
   END                                               AS start_dow_invitee_local,
-  HOUR(TRY(from_iso8601_timestamp(m.start_time_raw))
-       AT TIME ZONE 'America/New_York')             AS start_hour_business_est,
-  DAY_OF_WEEK(TRY(from_iso8601_timestamp(m.start_time_raw))
-              AT TIME ZONE 'America/New_York')      AS start_dow_business_est,
+  HOUR(at_timezone(TRY(from_iso8601_timestamp(m.start_time_raw)), 'America/New_York'))             AS start_hour_business_est,
+  DAY_OF_WEEK(at_timezone(TRY(from_iso8601_timestamp(m.start_time_raw)), 'America/New_York'))      AS start_dow_business_est,
   -- Rows without a timezone cannot feed the customer-preference heatmap and
   -- belong in a coverage bucket rather than being silently defaulted to EST.
   (m.invitee_timezone IS NULL)                      AS missing_invitee_timezone,
@@ -136,7 +131,7 @@ SELECT
   ic.invitee_count,
 
   (c.scheduled_event_uri IS NOT NULL)               AS is_canceled,
-  TRY(from_iso8601_timestamp(c.canceled_at_raw))    AS canceled_at,
+  CAST(TRY(from_iso8601_timestamp(c.canceled_at_raw)) AS TIMESTAMP)    AS canceled_at,
 
   -- The spec asks for UTM-based attribution, but every UTM field was null in
   -- the source sample, which is why channel comes from the event_type map.

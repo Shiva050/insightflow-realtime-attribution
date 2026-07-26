@@ -75,22 +75,21 @@ SELECT
   i.invitee_timezone,
   i.invitee_status,
 
-  TRY(from_iso8601_timestamp(i.created_at_raw))     AS created_at_utc,
-  CAST(TRY(from_iso8601_timestamp(i.created_at_raw))
-       AT TIME ZONE 'America/New_York' AS DATE)     AS booking_date_est,
-  TRY(from_iso8601_timestamp(i.updated_at_raw))     AS updated_at_utc,
+  CAST(TRY(from_iso8601_timestamp(i.created_at_raw)) AS TIMESTAMP)     AS created_at_utc,
+  CAST(at_timezone(TRY(from_iso8601_timestamp(i.created_at_raw)), 'America/New_York') AS DATE)     AS booking_date_est,
+  CAST(TRY(from_iso8601_timestamp(i.updated_at_raw)) AS TIMESTAMP)     AS updated_at_utc,
 
   COALESCE(TRY(CAST(i.rescheduled_raw AS BOOLEAN)), FALSE) AS is_rescheduled,
 
   (c.invitee_uri IS NOT NULL)                       AS is_canceled,
-  TRY(from_iso8601_timestamp(c.canceled_at_raw))    AS canceled_at,
+  CAST(TRY(from_iso8601_timestamp(c.canceled_at_raw)) AS TIMESTAMP)    AS canceled_at,
   c.cancel_reason,
   c.canceled_by,
 
   -- Kept as JSON rather than exploded: the questionnaire is free-form and its
   -- shape varies per event type, so flattening it here would bake in today's
   -- questions.
-  CAST(i.questions_and_answers AS VARCHAR)          AS questions_and_answers_json,
+  json_format(i.questions_and_answers)              AS questions_and_answers_json,
 
   DATE '{{asof}}'                                   AS build_date
 
