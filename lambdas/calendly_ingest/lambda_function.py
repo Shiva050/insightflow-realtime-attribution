@@ -43,12 +43,13 @@ import os
 import time
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3")
+ssm = boto3.client("ssm")
 
 BRONZE_BUCKET = os.environ.get("BRONZE_BUCKET", "insightflow-bronze")
 CALENDLY_PREFIX = os.environ.get("CALENDLY_PREFIX", "calendly/bookings")
@@ -56,10 +57,52 @@ CALENDLY_CANCEL_PREFIX = os.environ.get(
     "CALENDLY_CANCEL_PREFIX", "calendly/cancellations"
 )
 
-# Calendly signs with HMAC-SHA256, header format: "t=<ts>,v1=<signature>".
-# Key is issued at subscription creation, so this stays unset until then.
-CALENDLY_SIGNING_KEY = os.environ.get("CALENDLY_SIGNING_KEY", "")
+# Calendly signs with HMAC-SHA256 over "{timestamp}.{body}" — note the DOT
+# separator, and note that the signing key is used as raw UTF-8. Close's scheme
+# differs on both counts (no separator, hex-decoded key), which is exactly why
+# these two verifiers stay separate instead of sharing a helper: one shared
+# "verify HMAC" function would silently reject every request from one vendor.
+#
+# The key is one WE choose and hand to Calendly at subscription creation, stored
+# as an SSM SecureString. The env fallback exists for local tests only.
+SIGNING_KEY_PARAM = os.environ.get(
+    "CALENDLY_SIGNING_KEY_PARAM", "/insightflow/calendly/signing_key"
+)
+CALENDLY_SIGNING_KEY_ENV = os.environ.get("CALENDLY_SIGNING_KEY", "")
+
+# See crm_ingest: tolerated before registration, hard failure after.
+REQUIRE_SIGNATURE = os.environ.get("REQUIRE_SIGNATURE", "").lower() == "true"
+
 SIGNATURE_MAX_AGE_SECONDS = int(os.environ.get("SIGNATURE_MAX_AGE_SECONDS", "300"))
+
+_signing_key_cache = None
+
+
+def get_signing_key():
+    """Resolve the Calendly signing key once per container."""
+    global _signing_key_cache
+    if _signing_key_cache is not None:
+        return _signing_key_cache
+
+    if CALENDLY_SIGNING_KEY_ENV:
+        logger.warning("Using CALENDLY_SIGNING_KEY from the environment - prefer SSM")
+        _signing_key_cache = CALENDLY_SIGNING_KEY_ENV
+        return _signing_key_cache
+
+    try:
+        resp = ssm.get_parameter(Name=SIGNING_KEY_PARAM, WithDecryption=True)
+        _signing_key_cache = resp["Parameter"]["Value"]
+        return _signing_key_cache
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] != "ParameterNotFound":
+            raise
+        logger.warning("SSM parameter %s not found", SIGNING_KEY_PARAM)
+        _signing_key_cache = ""
+        return _signing_key_cache
+    except BotoCoreError as exc:
+        # Transient — deliberately not cached. See crm_ingest for the reasoning.
+        logger.warning("Could not resolve %s (%s) - not caching", SIGNING_KEY_PARAM, exc)
+        return ""
 
 # Events we persist, and where each lands. Anything not listed gets a 200 (so
 # Calendly stops redelivering) but is not written.
@@ -116,11 +159,16 @@ def verify_signature(headers, raw_body):
     """
     Verify the Calendly webhook signature.
 
-    Returns (ok, reason). No configured key => ok=True with a logged warning, so
-    the endpoint is usable before the SME issues the signing key.
+    Returns (ok, reason). With no configured key the result depends on
+    REQUIRE_SIGNATURE: tolerated (loudly) before the subscription exists, a hard
+    failure once it does.
     """
-    if not CALENDLY_SIGNING_KEY:
-        return True, "verification skipped - CALENDLY_SIGNING_KEY not configured"
+    signing_key = get_signing_key()
+
+    if not signing_key:
+        if REQUIRE_SIGNATURE:
+            return False, "REQUIRE_SIGNATURE is set but no signing key is configured"
+        return True, "verification skipped - no signing key configured"
 
     header = _get_header(headers, "Calendly-Webhook-Signature")
     timestamp, signature = _parse_signature_header(header)
@@ -136,9 +184,10 @@ def verify_signature(headers, raw_body):
     if abs(age) > SIGNATURE_MAX_AGE_SECONDS:
         return False, f"signature timestamp is {int(age)}s old - outside replay window"
 
+    # Dot separator, and the key as raw UTF-8 — both differ from Close.
     signed_payload = f"{timestamp}.{raw_body}".encode("utf-8")
     expected = hmac.new(
-        CALENDLY_SIGNING_KEY.encode("utf-8"), signed_payload, hashlib.sha256
+        signing_key.encode("utf-8"), signed_payload, hashlib.sha256
     ).hexdigest()
 
     if not hmac.compare_digest(expected, signature):

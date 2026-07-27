@@ -99,11 +99,25 @@ requirement doc's sample payload.
 - `event.id` is the event identity; `event.lead_id` the lead; `event.action` is
   `created` / `updated`; `event.changed_fields` is `[]` on creation.
 - Lead fields live under `event.data`, including opaque `custom.cf_*` keys.
-- Signature headers: `Close-Sig-Hash`, `Close-Sig-Timestamp`.
+### Signing scheme — verified 2026-07-26 against developer.close.com
 
-**To verify once live:** the exact HMAC signing scheme, whether `date_created`
-ever carries a timezone offset (the sample has none at `event` level but does at
-`event.data` level), and whether `action` takes values beyond created/updated.
+- Headers: `Close-Sig-Hash` (signature), `Close-Sig-Timestamp` (signing time).
+- Signed string is `close-sig-timestamp + body`, concatenated with **no
+  separator**.
+- HMAC-SHA256, hex digest, compared constant-time.
+- **The `signature_key` is a hex string and must be hex-DECODED before use as
+  the HMAC key** (`bytes.fromhex(key)`). This is the trap: passing the hex text
+  straight to `hmac.new()` turns a 64-character key into 64 ASCII bytes instead
+  of the intended 32, so every signature mismatches and every genuine webhook
+  gets a 401. The key is issued in the POST response when the subscription is
+  created.
+
+Note the asymmetry with Calendly below — different separator, different key
+encoding. The two verifiers are deliberately kept separate for that reason.
+
+**To verify once live:** whether `date_created` ever carries a timezone offset
+(the sample has none at `event` level but does at `event.data` level), and
+whether `action` takes values beyond created/updated.
 
 ## Lead owner lookup — `dea-lead-owner`
 
@@ -125,8 +139,23 @@ Not yet verified against live traffic. Shape from the requirement doc's sample.
   channel attribution "using UTM parameters"; if UTMs are null in practice, the
   `event_type` → channel map is the only workable route.
 
-**To verify once live:** whether UTM fields are ever populated, and whether
-`invitee.canceled` payloads carry a nested `cancellation` object.
+### Signing scheme — 2026-07-26
+
+- Header: `Calendly-Webhook-Signature`, value `t=<unix_ts>,v1=<hex_signature>`.
+- Signed string is `t + "." + body` — note the **dot separator**, unlike Close.
+- HMAC-SHA256, hex digest. The signing key is used as **raw UTF-8**, NOT
+  hex-decoded — again unlike Close.
+- The `signing_key` is chosen by us and supplied when the subscription is
+  created, so it can be generated and stored before the SMEs register anything.
+
+Confirmed from Calendly's published verification example. Calendly's docs site
+renders client-side and could not be fetched directly, so unlike the Close entry
+this one is **not** first-party-verified — treat it as provisional and confirm
+against the first live delivery.
+
+**To verify once live:** the signature scheme above, whether UTM fields are ever
+populated, and whether `invitee.canceled` payloads carry a nested `cancellation`
+object.
 
 ## Wistia — Stats API
 

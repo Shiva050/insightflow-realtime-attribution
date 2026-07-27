@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2082 589.0" width="2082" height="589.0" role="img" aria-label="InsightFlow — CRM real-time alerting path">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7C8B9A"/></marker></defs>
+<rect width="2082" height="589.0" fill="#12161C"/>
+<text x="40" y="46" font-family="Helvetica,Arial,sans-serif" font-size="21" font-weight="700" fill="#E8EDF2">InsightFlow — CRM real-time alerting path</text>
+<text x="40" y="68" font-family="Helvetica,Arial,sans-serif" font-size="11.5" fill="#93A1B0">Webhook to Slack in ~10 minutes, exactly-once-ish by deliberate choice</text>
+<rect x="1184" y="108" width="190" height="62" rx="9" fill="#E7157B" fill-opacity="0.16" stroke="#E7157B" stroke-width="1.7"/>
+<rect x="1184" y="108" width="4.5" height="62" rx="2.2" fill="#E7157B"/>
+<text x="1279.0" y="143.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">DLQ</text>
+<text x="1279.0" y="184" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">maxReceiveCount 5</text>
+<text x="1279.0" y="197.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">cap, never loop forever</text>
+<rect x="1470" y="108" width="190" height="62" rx="9" fill="#C925D1" fill-opacity="0.16" stroke="#C925D1" stroke-width="1.7"/>
+<rect x="1470" y="108" width="4.5" height="62" rx="2.2" fill="#C925D1"/>
+<text x="1565.0" y="143.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">event ledger</text>
+<text x="1565.0" y="184" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">conditional PutItem</text>
+<text x="1565.0" y="197.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">atomic claim, no TOCTOU</text>
+<rect x="1756" y="108" width="190" height="62" rx="9" fill="#C925D1" fill-opacity="0.16" stroke="#C925D1" stroke-width="1.7"/>
+<rect x="1756" y="108" width="4.5" height="62" rx="2.2" fill="#C925D1"/>
+<text x="1851.0" y="143.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">lead-owner cache</text>
+<text x="1851.0" y="184" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">read-through</text>
+<text x="1851.0" y="197.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">never negative-cached</text>
+<rect x="40" y="228" width="190" height="62" rx="9" fill="#5A6B7B" fill-opacity="0.16" stroke="#5A6B7B" stroke-width="1.7"/>
+<rect x="40" y="228" width="4.5" height="62" rx="2.2" fill="#5A6B7B"/>
+<text x="135.0" y="263.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">Close CRM</text>
+<text x="135.0" y="304" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">webhook POST</text>
+<rect x="326" y="228" width="190" height="62" rx="9" fill="#E7157B" fill-opacity="0.16" stroke="#E7157B" stroke-width="1.7"/>
+<rect x="326" y="228" width="4.5" height="62" rx="2.2" fill="#E7157B"/>
+<text x="421.0" y="263.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">API Gateway</text>
+<text x="421.0" y="304" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">HMAC-SHA256 verified</text>
+<text x="421.0" y="317.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">hex key · ts + body</text>
+<rect x="612" y="228" width="190" height="62" rx="9" fill="#ED7100" fill-opacity="0.16" stroke="#ED7100" stroke-width="1.7"/>
+<rect x="612" y="228" width="4.5" height="62" rx="2.2" fill="#ED7100"/>
+<text x="707.0" y="263.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">crm-ingest λ</text>
+<text x="707.0" y="304" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">lands raw, does nothing else</text>
+<rect x="898" y="228" width="190" height="62" rx="9" fill="#7AA116" fill-opacity="0.16" stroke="#7AA116" stroke-width="1.7"/>
+<rect x="898" y="228" width="4.5" height="62" rx="2.2" fill="#7AA116"/>
+<text x="993.0" y="263.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">insightflow-bronze</text>
+<text x="993.0" y="304" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">crm_event_{event_id}.json</text>
+<text x="993.0" y="317.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">keyed on event_id</text>
+<rect x="1184" y="228" width="190" height="62" rx="9" fill="#E7157B" fill-opacity="0.16" stroke="#E7157B" stroke-width="1.7"/>
+<rect x="1184" y="228" width="4.5" height="62" rx="2.2" fill="#E7157B"/>
+<text x="1279.0" y="263.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">SQS delay queue</text>
+<text x="1279.0" y="304" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">10 min &lt; 15 min cap</text>
+<text x="1279.0" y="317.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">carries the pointer only</text>
+<rect x="1470" y="228" width="190" height="62" rx="9" fill="#ED7100" fill-opacity="0.16" stroke="#ED7100" stroke-width="1.7"/>
+<rect x="1470" y="228" width="4.5" height="62" rx="2.2" fill="#ED7100"/>
+<text x="1565.0" y="263.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">crm-enrich λ</text>
+<text x="1565.0" y="304" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">claim → post → mark SENT</text>
+<rect x="1756" y="228" width="190" height="62" rx="9" fill="#5A6B7B" fill-opacity="0.16" stroke="#5A6B7B" stroke-width="1.7"/>
+<rect x="1756" y="228" width="4.5" height="62" rx="2.2" fill="#5A6B7B"/>
+<text x="1851.0" y="263.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">Slack</text>
+<text x="1851.0" y="304" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">New Lead Alert</text>
+<rect x="612" y="348" width="190" height="62" rx="9" fill="#E7157B" fill-opacity="0.16" stroke="#E7157B" stroke-width="1.7"/>
+<rect x="612" y="348" width="4.5" height="62" rx="2.2" fill="#E7157B"/>
+<text x="707.0" y="383.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">EventBridge</text>
+<text x="707.0" y="424" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">hourly schedule</text>
+<rect x="898" y="348" width="190" height="62" rx="9" fill="#ED7100" fill-opacity="0.16" stroke="#ED7100" stroke-width="1.7"/>
+<rect x="898" y="348" width="4.5" height="62" rx="2.2" fill="#ED7100"/>
+<text x="993.0" y="383.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">owner-sweep λ</text>
+<text x="993.0" y="424" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">drains the worklist</text>
+<rect x="1184" y="348" width="190" height="62" rx="9" fill="#5A6B7B" fill-opacity="0.16" stroke="#5A6B7B" stroke-width="1.7"/>
+<rect x="1184" y="348" width="4.5" height="62" rx="2.2" fill="#5A6B7B"/>
+<text x="1279.0" y="383.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">dea-lead-owner</text>
+<text x="1279.0" y="424" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">public bucket</text>
+<text x="1279.0" y="437.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">403 = not yet assigned</text>
+<rect x="1470" y="348" width="190" height="62" rx="9" fill="#C925D1" fill-opacity="0.16" stroke="#C925D1" stroke-width="1.7"/>
+<rect x="1470" y="348" width="4.5" height="62" rx="2.2" fill="#C925D1"/>
+<text x="1565.0" y="383.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">awaiting-owner</text>
+<text x="1565.0" y="424" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">durable worklist</text>
+<text x="1565.0" y="437.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">retry_count → EXHAUSTED</text>
+<rect x="1756" y="348" width="190" height="62" rx="9" fill="#5A6B7B" fill-opacity="0.16" stroke="#5A6B7B" stroke-width="1.7"/>
+<rect x="1756" y="348" width="4.5" height="62" rx="2.2" fill="#5A6B7B"/>
+<text x="1851.0" y="383.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#E8EDF2">Slack</text>
+<text x="1851.0" y="424" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">exhausted escalation</text>
+<path d="M 230 259.0 L 326 259.0" fill="none" stroke="#7C8B9A" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M 516 259.0 L 612 259.0" fill="none" stroke="#7C8B9A" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M 802 259.0 L 898 259.0" fill="none" stroke="#7C8B9A" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M 1088 259.0 L 1184 259.0" fill="none" stroke="#7C8B9A" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="1110.12" y="244.0" width="51.76" height="14" rx="3" fill="#12161C" fill-opacity="0.92"/>
+<text x="1136.0" y="254.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" fill="#93A1B0">S3 event</text>
+<path d="M 1374 259.0 L 1470 259.0" fill="none" stroke="#7C8B9A" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M 1660 259.0 L 1756 259.0" fill="none" stroke="#7C8B9A" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="1689.95" y="244.0" width="36.099999999999994" height="14" rx="3" fill="#12161C" fill-opacity="0.92"/>
+<text x="1708.0" y="254.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" fill="#93A1B0">alert</text>
+<path d="M 1361.0 228 L 1361.0 170" fill="none" stroke="#7C8B9A" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M 1647.0 228 L 1647.0 170" fill="none" stroke="#7C8B9A" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M 1660 139.0 L 1756 139.0" fill="none" stroke="#7C8B9A" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="1687.34" y="124.0" width="41.31999999999999" height="14" rx="3" fill="#12161C" fill-opacity="0.92"/>
+<text x="1708.0" y="134.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" fill="#93A1B0">owner?</text>
+<path d="M 1647.0 290 L 1647.0 348" fill="none" stroke="#7C8B9A" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M 802 379.0 L 898 379.0" fill="none" stroke="#7C8B9A" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M 1088 379.0 L 1184 379.0" fill="none" stroke="#7C8B9A" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="1112.73" y="364.0" width="46.54" height="14" rx="3" fill="#12161C" fill-opacity="0.92"/>
+<text x="1136.0" y="374.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" fill="#93A1B0">re-read</text>
+<path d="M 1374 379.0 L 1470 379.0" fill="none" stroke="#7C8B9A" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="1398.73" y="364.0" width="46.54" height="14" rx="3" fill="#12161C" fill-opacity="0.92"/>
+<text x="1422.0" y="374.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" fill="#93A1B0">promote</text>
+<path d="M 1660 379.0 L 1756 379.0" fill="none" stroke="#7C8B9A" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="1679.51" y="364.0" width="56.98" height="14" rx="3" fill="#12161C" fill-opacity="0.92"/>
+<text x="1708.0" y="374.5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" fill="#93A1B0">EXHAUSTED</text>
+<text x="40" y="485.0" font-family="Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" letter-spacing="1.1" fill="#E7157B">DESIGN NOTES</text>
+<text x="40" y="505.0" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">• Send-then-mark-SENT: a duplicate page beats a missed lead, so the alert goes out before the ledger says it did.</text>
+<text x="40" y="522.0" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">• The PENDING lease is sized to worst-case invocation time (~120s), not to the 10-minute business delay — that is already spent in the queue.</text>
+<text x="40" y="539.0" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">• A missing owner is never negative-cached. It goes on the durable worklist, because “the next update will fix it” depends on an event that may never arrive.</text>
+<text x="40" y="556.0" font-family="Helvetica,Arial,sans-serif" font-size="10.5" fill="#93A1B0">• Both Slack destinations read one SSM SecureString; unset means the alert is logged, never silently dropped.</text>
+</svg>

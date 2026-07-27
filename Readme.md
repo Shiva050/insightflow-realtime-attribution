@@ -14,10 +14,64 @@ still pending — see [Deployment status](#deployment-status).
 
 ## Architecture
 
-![InsightFlow architecture](assets/insightflow-architecture.png)
+Three views rather than one crowded canvas. The batch medallion and the
+real-time alerting branch answer different questions for different audiences,
+and forcing them onto a single diagram is what made an earlier version hard to
+read. Each view below is deliberately scoped.
 
-<!-- Editable source: assets/insightflow-architecture.drawio — open at
-     app.diagrams.net, then File → Export as → PNG and save alongside it. -->
+| View | Answers | Format |
+|---|---|---|
+| [1. System context](#1-system-context) | How does data get from four sources to a dashboard? | SVG |
+| [2. CRM real-time path](#2-crm-real-time-path) | How does a new lead become a Slack alert in 10 minutes? | SVG |
+| [3. Full AWS architecture](#3-full-aws-architecture) | Which AWS services, and how are they wired? | draw.io + PNG |
+
+### 1. System context
+
+Four sources, two ingest styles, one Bronze landing zone, then the medallion
+build and the dashboard. This is the view for "what is this system".
+
+![InsightFlow system context](assets/architecture-overview.svg)
+
+### 2. CRM real-time path
+
+The branch where the interesting failure modes live: the 10-minute delay that
+lets Close assign an owner, the atomic idempotency claim, the send-then-record
+ordering, and the reconciliation sweep that drains the awaiting-owner worklist.
+Slack appears twice — the new-lead alert and the exhausted-lead escalation both
+post to the same webhook.
+
+![InsightFlow CRM real-time path](assets/architecture-crm-realtime.svg)
+
+### 3. Full AWS architecture
+
+Every service end to end with AWS iconography — the view for an infrastructure
+review.
+
+![InsightFlow end-to-end AWS architecture](assets/insightflow-architecture-aws.drawio.png)
+
+Two conventions worth knowing before reading it:
+
+- **The AWS Cloud boundary means what it says.** The vendor webhooks, the two
+  third-party S3 buckets (`dea-data-bucket`, `dea-lead-owner`) and Slack are
+  drawn *outside* it, because they are not ours.
+- **Dashed edges are secret reads, not data flow.** Parameter Store hands each
+  Lambda a SecureString at cold start; nothing about the pipeline's data moves
+  along those lines.
+
+Editable source: [`assets/insightflow-architecture-aws.drawio`](assets/insightflow-architecture-aws.drawio).
+Open it at [app.diagrams.net](https://app.diagrams.net) via **File → Open From →
+Device**, then re-export with **File → Export as → PNG**.
+
+<!-- All three diagrams are generated, never hand-placed:
+       python3 tools/render_architecture.py   -> the two README SVGs
+       python3 tools/render_drawio.py         -> the draw.io source
+     The layout is data. The SVG generator asserts that no two node footprints
+     overlap and that no vertical connector clips a caption; the draw.io
+     generator asserts one node per grid cell and rejects dangling edges. A
+     collision fails the build instead of surviving into the exported image.
+     Edit the node grid in those scripts, not the output. The PNG is a manual
+     draw.io export and is the one artefact here that is NOT reproducible from
+     source — re-export it after any change to the .drawio. -->
 
 <details>
 <summary>Text version of the same flow</summary>
@@ -118,8 +172,23 @@ Deployed **2026-07-26** to `us-east-1`, built by CLI. `infra/console-setup.md`
 records every resource, its settings and the reasoning behind them.
 
 Live: 8 Lambdas, API Gateway, SQS delay queue + DLQ, 5 DynamoDB tables, 3 Glue
-databases, 11 Bronze external tables, 10 Silver + 8 Gold tables behind views, 4
-EventBridge schedules, and the Wistia token in SSM as a SecureString.
+databases, 11 Bronze external tables, 10 Silver + 8 Gold tables behind views and
+4 EventBridge schedules.
+
+Every secret is an SSM SecureString, read once per container and never held in a
+Lambda environment variable:
+
+| Parameter | Enables |
+|---|---|
+| `/insightflow/wistia/api_token` | Wistia pulls — **set** |
+| `/insightflow/slack/webhook_url` | New-lead alerts and sweep escalations — *pending* |
+| `/insightflow/close/signing_key` | Close webhook signature verification — *pending, SME-issued* |
+| `/insightflow/calendly/signing_key` | Calendly signature verification — *pending, we choose it* |
+
+Creating the parameter is what switches each feature on. Until the signing keys
+exist the ingest endpoints accept unsigned POSTs and log a loud warning; set
+`REQUIRE_SIGNATURE=true` on both ingest Lambdas at registration so a missing key
+fails closed instead.
 
 **Webhook endpoints** (hand these to the SMEs; ask for `invitee.created` **and**
 `invitee.canceled`):
@@ -189,7 +258,7 @@ sql/gold/         8 metric marts
 streamlit/        dashboard over Athena (Gold marts only)
 seeds/            externalised reference maps (real values live in S3)
 infra/            deployment record — every resource, and why
-assets/           architecture diagram (draw.io source + exported PNG)
+assets/           3 diagrams: 2 generated SVGs + draw.io source and its PNG export
 tools/            replay harness, test runner
 tests/            258 checks, no AWS required
 SOURCE_CONTRACTS.md   verified source behaviour, incl. where it contradicts the spec
