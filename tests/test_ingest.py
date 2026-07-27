@@ -148,7 +148,14 @@ def test_crm():
     # Close issues signature_key as a HEX STRING and signs with its DECODED
     # bytes (verified against developer.close.com, 2026-07-26). The key below is
     # hex on purpose: signing with the hex TEXT is the bug this suite now guards.
-    key_hex = "058bfb6a3d8cfdc4da7c3be5901b16ae11da982b46a25fb2cd7016e97a140a1c"
+    #
+    # Deliberately 32 hex chars, not the 64 a real Close key uses. The
+    # guard-secrets CI job flags any 64-char hex literal as a possible leaked
+    # API token, and it cannot tell a documentation sample from a live
+    # credential — nor should it have to. hmac accepts any key length, so the
+    # shorter key exercises the decode path identically: 16 raw bytes here
+    # versus 32 ASCII bytes if the hex text were used by mistake.
+    key_hex = "058bfb6a3d8cfdc4da7c3be5901b16ae"
     key_bytes = bytes.fromhex(key_hex)
     crm._signing_key_cache = key_hex
     crm.s3 = FakeS3()
