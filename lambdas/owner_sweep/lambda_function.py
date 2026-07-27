@@ -32,12 +32,13 @@ import urllib.parse
 import urllib.request
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 dynamodb = boto3.client("dynamodb")
+ssm = boto3.client("ssm")
 
 OWNER_CACHE_TABLE = os.environ.get("OWNER_CACHE_TABLE", "insightflow-lead-owner")
 AWAITING_TABLE = os.environ.get("AWAITING_TABLE", "insightflow-awaiting-owner")
@@ -45,7 +46,39 @@ AWAITING_TABLE = os.environ.get("AWAITING_TABLE", "insightflow-awaiting-owner")
 OWNER_BUCKET = os.environ.get("OWNER_BUCKET", "dea-lead-owner")
 OWNER_BUCKET_REGION = os.environ.get("OWNER_BUCKET_REGION", "us-east-1")
 
-SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL", "")
+# Same SecureString the enrich path reads. See crm_enrich for the reasoning.
+SLACK_WEBHOOK_PARAM = os.environ.get(
+    "SLACK_WEBHOOK_PARAM", "/insightflow/slack/webhook_url"
+)
+SLACK_WEBHOOK_URL_ENV = os.environ.get("SLACK_WEBHOOK_URL", "")
+
+_slack_url_cache = None
+
+
+def get_slack_webhook_url():
+    """Resolve the Slack webhook URL once per container."""
+    global _slack_url_cache
+    if _slack_url_cache is not None:
+        return _slack_url_cache
+
+    if SLACK_WEBHOOK_URL_ENV:
+        logger.warning("Using SLACK_WEBHOOK_URL from the environment - prefer SSM")
+        _slack_url_cache = SLACK_WEBHOOK_URL_ENV
+        return _slack_url_cache
+
+    try:
+        resp = ssm.get_parameter(Name=SLACK_WEBHOOK_PARAM, WithDecryption=True)
+        _slack_url_cache = resp["Parameter"]["Value"]
+        return _slack_url_cache
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] != "ParameterNotFound":
+            raise
+        logger.warning("SSM parameter %s not found", SLACK_WEBHOOK_PARAM)
+        _slack_url_cache = ""
+        return _slack_url_cache
+    except BotoCoreError as exc:
+        logger.warning("Could not resolve %s (%s) - not caching", SLACK_WEBHOOK_PARAM, exc)
+        return ""
 
 # ~24 hourly sweeps ≈ one day of trying before a human is asked to look.
 MAX_RETRIES = int(os.environ.get("MAX_RETRIES", "24"))
@@ -166,12 +199,14 @@ def escalate(exhausted_leads):
     if len(exhausted_leads) > 20:
         text += f"\n…and {len(exhausted_leads) - 20} more"
 
-    if not SLACK_WEBHOOK_URL:
-        logger.warning("SLACK_WEBHOOK_URL not configured - escalation not sent: %s", text)
+    webhook_url = get_slack_webhook_url()
+
+    if not webhook_url:
+        logger.warning("No Slack webhook configured - escalation not sent: %s", text)
         return
 
     request = urllib.request.Request(
-        SLACK_WEBHOOK_URL,
+        webhook_url,
         data=json.dumps({"text": text}).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",

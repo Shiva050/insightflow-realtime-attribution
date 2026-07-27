@@ -47,13 +47,14 @@ import urllib.parse
 import urllib.request
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3")
 dynamodb = boto3.client("dynamodb")
+ssm = boto3.client("ssm")
 
 LEDGER_TABLE = os.environ.get("LEDGER_TABLE", "insightflow-event-ledger")
 OWNER_CACHE_TABLE = os.environ.get("OWNER_CACHE_TABLE", "insightflow-lead-owner")
@@ -62,10 +63,49 @@ AWAITING_TABLE = os.environ.get("AWAITING_TABLE", "insightflow-awaiting-owner")
 OWNER_BUCKET = os.environ.get("OWNER_BUCKET", "dea-lead-owner")
 OWNER_BUCKET_REGION = os.environ.get("OWNER_BUCKET_REGION", "us-east-1")
 
-SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL", "")
-# With no webhook configured the alert is logged instead of posted. Lets the
-# whole path be exercised before Slack exists, without silently doing nothing.
-DRY_RUN = not SLACK_WEBHOOK_URL
+# A Slack incoming-webhook URL is a credential: anyone holding it can post into
+# the channel. It lives in SSM as a SecureString, same as the Wistia token and
+# the webhook signing keys. The env var remains as a local-test fallback.
+SLACK_WEBHOOK_PARAM = os.environ.get(
+    "SLACK_WEBHOOK_PARAM", "/insightflow/slack/webhook_url"
+)
+SLACK_WEBHOOK_URL_ENV = os.environ.get("SLACK_WEBHOOK_URL", "")
+
+_slack_url_cache = None
+
+
+def get_slack_webhook_url():
+    """
+    Resolve the Slack webhook URL once per container.
+
+    Returns "" when nothing is configured, which puts the caller in dry-run:
+    the alert is logged rather than posted, so the whole path stays exercisable
+    before Slack exists without silently doing nothing.
+    """
+    global _slack_url_cache
+    if _slack_url_cache is not None:
+        return _slack_url_cache
+
+    if SLACK_WEBHOOK_URL_ENV:
+        logger.warning("Using SLACK_WEBHOOK_URL from the environment - prefer SSM")
+        _slack_url_cache = SLACK_WEBHOOK_URL_ENV
+        return _slack_url_cache
+
+    try:
+        resp = ssm.get_parameter(Name=SLACK_WEBHOOK_PARAM, WithDecryption=True)
+        _slack_url_cache = resp["Parameter"]["Value"]
+        return _slack_url_cache
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] != "ParameterNotFound":
+            raise
+        logger.warning("SSM parameter %s not found", SLACK_WEBHOOK_PARAM)
+        _slack_url_cache = ""
+        return _slack_url_cache
+    except BotoCoreError as exc:
+        # Transient. Not cached — a blip must not silence alerts for the rest of
+        # this container's life.
+        logger.warning("Could not resolve %s (%s) - not caching", SLACK_WEBHOOK_PARAM, exc)
+        return ""
 
 # D11: the lease measures how long one honest invocation could legitimately
 # take, NOT the business delay. Must stay below the SQS visibility timeout, and
@@ -291,15 +331,17 @@ def post_to_slack(message):
     POST the alert. Raises on failure so the message returns to the queue and
     the claim expires for a later retry — never swallow a delivery failure.
     """
-    if DRY_RUN:
+    webhook_url = get_slack_webhook_url()
+
+    if not webhook_url:
         logger.warning(
-            "SLACK_WEBHOOK_URL not configured - alert not sent. Payload: %s",
+            "No Slack webhook configured - alert not sent. Payload: %s",
             json.dumps(message),
         )
         return
 
     request = urllib.request.Request(
-        SLACK_WEBHOOK_URL,
+        webhook_url,
         data=json.dumps(message).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",

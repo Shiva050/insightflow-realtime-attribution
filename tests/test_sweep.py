@@ -35,6 +35,7 @@ def load_sweep():
     sys.modules["owner_sweep"] = mod
     spec.loader.exec_module(mod)
     mod.dynamodb = FakeDynamo()
+    mod._slack_url_cache = ""  # never reach for SSM; CI has no credentials
     mod.escalations = []
     mod.escalate = lambda leads: mod.escalations.extend(leads)
     return mod

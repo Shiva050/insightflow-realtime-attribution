@@ -93,7 +93,8 @@ def fresh_module():
     )
     mod.dynamodb = FakeDynamo()
     mod.s3 = FakeS3({BRONZE_KEY: read_fixture("crm_event_created.json")})
-    mod.DRY_RUN = True
+    # Pin the webhook cache so nothing reaches for SSM. CI has no credentials.
+    mod._slack_url_cache = ""
     mod.sent_messages = []
 
     def fake_post(message):
