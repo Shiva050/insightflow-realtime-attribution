@@ -31,22 +31,77 @@ import os
 import time
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3")
+ssm = boto3.client("ssm")
 
 BRONZE_BUCKET = os.environ.get("BRONZE_BUCKET", "insightflow-bronze")
 CRM_PREFIX = os.environ.get("CRM_PREFIX", "crm/events")
 
-# Close signs webhooks with HMAC-SHA256 over (timestamp + body).
-# The signing key is issued when the subscription is created, so this stays
-# unset until the SME hands it over. Unset => verification skipped, loudly.
-CLOSE_SIGNING_KEY = os.environ.get("CLOSE_SIGNING_KEY", "")
+# Close signs webhooks with HMAC-SHA256 over (timestamp + body), concatenated
+# with NO separator. Verified against developer.close.com/api/resources/webhooks
+# on 2026-07-26.
+#
+# The signing key lives in SSM as a SecureString — same treatment as the Wistia
+# token. A webhook signing key is a credential; leaving it in a plaintext Lambda
+# env var makes it readable by anyone holding lambda:GetFunctionConfiguration.
+# The env fallback exists for local tests only.
+SIGNING_KEY_PARAM = os.environ.get(
+    "CLOSE_SIGNING_KEY_PARAM", "/insightflow/close/signing_key"
+)
+CLOSE_SIGNING_KEY_ENV = os.environ.get("CLOSE_SIGNING_KEY", "")
+
+# Fail-closed switch. While the SMEs have not yet registered the subscription
+# there is no key to verify against, so an unset key is tolerated and logged
+# loudly. Set REQUIRE_SIGNATURE=true at registration: from then on a missing key
+# is a hard failure rather than a silent open door.
+REQUIRE_SIGNATURE = os.environ.get("REQUIRE_SIGNATURE", "").lower() == "true"
+
 # Reject signatures older than this to blunt replay attacks.
 SIGNATURE_MAX_AGE_SECONDS = int(os.environ.get("SIGNATURE_MAX_AGE_SECONDS", "300"))
+
+_signing_key_cache = None
+
+
+def get_signing_key():
+    """
+    Resolve the Close signing key once per container.
+
+    Returns "" when no key is configured anywhere, which the caller treats
+    according to REQUIRE_SIGNATURE.
+    """
+    global _signing_key_cache
+    if _signing_key_cache is not None:
+        return _signing_key_cache
+
+    if CLOSE_SIGNING_KEY_ENV:
+        logger.warning("Using CLOSE_SIGNING_KEY from the environment - prefer SSM")
+        _signing_key_cache = CLOSE_SIGNING_KEY_ENV
+        return _signing_key_cache
+
+    try:
+        resp = ssm.get_parameter(Name=SIGNING_KEY_PARAM, WithDecryption=True)
+        _signing_key_cache = resp["Parameter"]["Value"]
+        return _signing_key_cache
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] != "ParameterNotFound":
+            raise
+        # Definitive: the parameter does not exist. Safe to cache the absence
+        # for this container's lifetime.
+        logger.warning("SSM parameter %s not found", SIGNING_KEY_PARAM)
+        _signing_key_cache = ""
+        return _signing_key_cache
+    except BotoCoreError as exc:
+        # Transient — no credentials, no endpoint, a timeout. Deliberately NOT
+        # cached: caching "" here would disable verification for the whole
+        # container lifetime because of one blip. Returning "" means the caller
+        # falls back to REQUIRE_SIGNATURE, which fails closed once registered.
+        logger.warning("Could not resolve %s (%s) - not caching", SIGNING_KEY_PARAM, exc)
+        return ""
 
 
 def _response(status, message, **extra):
@@ -71,12 +126,16 @@ def verify_signature(headers, raw_body):
     """
     Verify the Close webhook signature.
 
-    Returns (ok, reason). When no signing key is configured we return ok=True
-    with a reason, so the endpoint works before the SME issues the key — but the
-    skip is logged at WARNING so it cannot quietly become permanent.
+    Returns (ok, reason). With no signing key configured the result depends on
+    REQUIRE_SIGNATURE: tolerated (loudly) before the subscription exists, a hard
+    failure once it does.
     """
-    if not CLOSE_SIGNING_KEY:
-        return True, "verification skipped - CLOSE_SIGNING_KEY not configured"
+    signing_key = get_signing_key()
+
+    if not signing_key:
+        if REQUIRE_SIGNATURE:
+            return False, "REQUIRE_SIGNATURE is set but no signing key is configured"
+        return True, "verification skipped - no signing key configured"
 
     sig_hash = _get_header(headers, "Close-Sig-Hash")
     sig_timestamp = _get_header(headers, "Close-Sig-Timestamp")
@@ -92,10 +151,17 @@ def verify_signature(headers, raw_body):
     if abs(age) > SIGNATURE_MAX_AGE_SECONDS:
         return False, f"signature timestamp is {int(age)}s old - outside replay window"
 
+    # Close issues the signature_key as a HEX STRING and signs with its DECODED
+    # bytes. Passing the hex text straight to hmac.new() is the trap: a 64-char
+    # key would become 64 ASCII bytes instead of the intended 32, producing a
+    # valid-looking digest that never matches. Every genuine webhook would 401.
+    try:
+        key_bytes = bytes.fromhex(signing_key)
+    except ValueError:
+        return False, "signing key is not valid hex - check the SSM parameter"
+
     signed_payload = f"{sig_timestamp}{raw_body}".encode("utf-8")
-    expected = hmac.new(
-        CLOSE_SIGNING_KEY.encode("utf-8"), signed_payload, hashlib.sha256
-    ).hexdigest()
+    expected = hmac.new(key_bytes, signed_payload, hashlib.sha256).hexdigest()
 
     # compare_digest, not == : constant-time, avoids a timing side channel.
     if not hmac.compare_digest(expected, sig_hash):

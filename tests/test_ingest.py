@@ -88,6 +88,9 @@ def test_crm():
     crm = load_handler(
         "crm_ingest", os.path.join(REPO_ROOT, "lambdas", "crm_ingest", "lambda_function.py")
     )
+    # Pin the key cache so no test ever reaches for SSM. CI has no credentials,
+    # and an unpinned cache would make every case pay a boto retry timeout.
+    crm._signing_key_cache = ""
     body = read_fixture("crm_event_created.json")
 
     # --- happy path: key derived from event_id, dt from payload date_created
@@ -141,14 +144,32 @@ def test_crm():
     check("S3 failure -> 500 so Close retries", resp["statusCode"] == 500)
 
     # --- signature verification, once a key exists
-    crm.CLOSE_SIGNING_KEY = "test-signing-key"
+    #
+    # Close issues signature_key as a HEX STRING and signs with its DECODED
+    # bytes (verified against developer.close.com, 2026-07-26). The key below is
+    # hex on purpose: signing with the hex TEXT is the bug this suite now guards.
+    key_hex = "058bfb6a3d8cfdc4da7c3be5901b16ae11da982b46a25fb2cd7016e97a140a1c"
+    key_bytes = bytes.fromhex(key_hex)
+    crm._signing_key_cache = key_hex
     crm.s3 = FakeS3()
     ts = str(int(time.time()))
-    good = hmac.new(b"test-signing-key", f"{ts}{body}".encode(), hashlib.sha256).hexdigest()
+    good = hmac.new(key_bytes, f"{ts}{body}".encode(), hashlib.sha256).hexdigest()
     resp = crm.lambda_handler(
         api_gw_event(body, {"Close-Sig-Hash": good, "Close-Sig-Timestamp": ts}), None
     )
     check("valid signature accepted", resp["statusCode"] == 200)
+
+    # REGRESSION GUARD. Signing with the hex text instead of the decoded bytes
+    # produces a plausible-looking digest that Close would never send. If this
+    # ever returns 200 the key is being used as raw UTF-8 again, and every real
+    # webhook would 401 in production.
+    wrong = hmac.new(
+        key_hex.encode("utf-8"), f"{ts}{body}".encode(), hashlib.sha256
+    ).hexdigest()
+    resp = crm.lambda_handler(
+        api_gw_event(body, {"Close-Sig-Hash": wrong, "Close-Sig-Timestamp": ts}), None
+    )
+    check("hex key must be decoded, not UTF-8 encoded -> 401", resp["statusCode"] == 401)
 
     resp = crm.lambda_handler(
         api_gw_event(body, {"Close-Sig-Hash": "deadbeef", "Close-Sig-Timestamp": ts}), None
@@ -156,7 +177,7 @@ def test_crm():
     check("bad signature -> 401", resp["statusCode"] == 401)
 
     old_ts = str(int(time.time()) - 3600)
-    stale = hmac.new(b"test-signing-key", f"{old_ts}{body}".encode(), hashlib.sha256).hexdigest()
+    stale = hmac.new(key_bytes, f"{old_ts}{body}".encode(), hashlib.sha256).hexdigest()
     resp = crm.lambda_handler(
         api_gw_event(body, {"Close-Sig-Hash": stale, "Close-Sig-Timestamp": old_ts}), None
     )
@@ -169,7 +190,26 @@ def test_crm():
     )
     check("header lookup is case-insensitive", resp["statusCode"] == 200)
 
-    crm.CLOSE_SIGNING_KEY = ""  # restore unverified default
+    # a non-hex key is a configuration error, not an accept
+    crm._signing_key_cache = "not-hex-at-all"
+    resp = crm.lambda_handler(
+        api_gw_event(body, {"Close-Sig-Hash": good, "Close-Sig-Timestamp": ts}), None
+    )
+    check("non-hex signing key -> 401", resp["statusCode"] == 401)
+
+    # --- fail-closed switch
+    # Before registration an absent key is tolerated; after, it must not be.
+    crm._signing_key_cache = ""
+    crm.s3 = FakeS3()
+    resp = crm.lambda_handler(api_gw_event(body), None)
+    check("no key + REQUIRE_SIGNATURE off -> accepted", resp["statusCode"] == 200)
+
+    crm.REQUIRE_SIGNATURE = True
+    resp = crm.lambda_handler(api_gw_event(body), None)
+    check("no key + REQUIRE_SIGNATURE on -> 401", resp["statusCode"] == 401)
+
+    crm.REQUIRE_SIGNATURE = False
+    crm._signing_key_cache = ""  # restore unverified default
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +221,7 @@ def test_calendly():
         "calendly_ingest",
         os.path.join(REPO_ROOT, "lambdas", "calendly_ingest", "lambda_function.py"),
     )
+    cal._signing_key_cache = ""  # see test_crm
     body = read_fixture("calendly_invitee_created.json")
 
     fake = FakeS3()
@@ -303,6 +344,70 @@ def test_calendly():
     cal.s3 = FakeS3(fail=True)
     resp = cal.lambda_handler(api_gw_event(body), None)
     check("S3 failure -> 500", resp["statusCode"] == 500)
+
+    # --- signature verification --------------------------------------------
+    # Calendly's scheme differs from Close on BOTH axes: the signed string uses
+    # a dot separator, and the key is used as raw UTF-8 rather than hex-decoded.
+    # These tests pin that difference so the two verifiers cannot be "helpfully"
+    # merged into one shared helper later.
+    signing_key = "calendly-test-signing-key"
+    cal._signing_key_cache = signing_key
+    cal.s3 = FakeS3()
+    ts = str(int(time.time()))
+    good = hmac.new(
+        signing_key.encode("utf-8"), f"{ts}.{body}".encode(), hashlib.sha256
+    ).hexdigest()
+    resp = cal.lambda_handler(
+        api_gw_event(body, {"Calendly-Webhook-Signature": f"t={ts},v1={good}"}), None
+    )
+    check("valid Calendly signature accepted", resp["statusCode"] == 200)
+
+    # The dot matters. Close's separator-less construction must NOT validate.
+    no_dot = hmac.new(
+        signing_key.encode("utf-8"), f"{ts}{body}".encode(), hashlib.sha256
+    ).hexdigest()
+    resp = cal.lambda_handler(
+        api_gw_event(body, {"Calendly-Webhook-Signature": f"t={ts},v1={no_dot}"}), None
+    )
+    check("Calendly requires the dot separator -> 401", resp["statusCode"] == 401)
+
+    resp = cal.lambda_handler(
+        api_gw_event(body, {"Calendly-Webhook-Signature": f"t={ts},v1=deadbeef"}), None
+    )
+    check("bad Calendly signature -> 401", resp["statusCode"] == 401)
+
+    resp = cal.lambda_handler(
+        api_gw_event(body, {"Calendly-Webhook-Signature": "garbage"}), None
+    )
+    check("malformed signature header -> 401", resp["statusCode"] == 401)
+
+    old_ts = str(int(time.time()) - 3600)
+    stale = hmac.new(
+        signing_key.encode("utf-8"), f"{old_ts}.{body}".encode(), hashlib.sha256
+    ).hexdigest()
+    resp = cal.lambda_handler(
+        api_gw_event(body, {"Calendly-Webhook-Signature": f"t={old_ts},v1={stale}"}), None
+    )
+    check("replayed old Calendly signature -> 401", resp["statusCode"] == 401)
+
+    cal.s3 = FakeS3()
+    resp = cal.lambda_handler(
+        api_gw_event(body, {"calendly-webhook-signature": f"t={ts},v1={good}"}), None
+    )
+    check("Calendly header lookup is case-insensitive", resp["statusCode"] == 200)
+
+    # --- fail-closed switch
+    cal._signing_key_cache = ""
+    cal.s3 = FakeS3()
+    resp = cal.lambda_handler(api_gw_event(body), None)
+    check("no key + REQUIRE_SIGNATURE off -> accepted", resp["statusCode"] == 200)
+
+    cal.REQUIRE_SIGNATURE = True
+    resp = cal.lambda_handler(api_gw_event(body), None)
+    check("no key + REQUIRE_SIGNATURE on -> 401", resp["statusCode"] == 401)
+
+    cal.REQUIRE_SIGNATURE = False
+    cal._signing_key_cache = ""
 
 
 if __name__ == "__main__":
